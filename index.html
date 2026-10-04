@@ -474,6 +474,8 @@ input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px}
 @media (max-width:900px){.sync-st{border:0;padding:8px}}
 code{font:12px ui-monospace,Consolas,monospace;background:var(--panel3);padding:1px 5px;border-radius:5px}
 [data-qr] svg{width:100%!important;height:auto!important;display:block}
+.rt{display:inline-grid;place-items:center;min-width:30px;padding:1px 5px;border-radius:6px;font-size:11px;font-weight:800;color:#fff;background:#64748b;font-variant-numeric:tabular-nums}.rt.r8{background:#16a34a}.rt.r7{background:#65a30d}.rt.r6{background:#ca8a04}.rt.r5{background:#dc2626}
+.crest.gen{background:transparent;border-radius:0}
 </style>
 <style id="css-site">.site{--acc:#c8102e;--hbg:#0b1430;--bg:#06090f;--card:#0f1522;--card2:#151d2e;--line:#1f2a3f;--text:#eef2f8;--muted:#8d9ab3;--hink:#fff;
   background:var(--bg);color:var(--text);min-height:100vh;font:15px/1.6 "Hiragino Sans","Noto Sans JP","Yu Gothic UI","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
@@ -612,6 +614,13 @@ table.s-tbl{width:100%;border-collapse:collapse;font-variant-numeric:tabular-num
 .s-tl div{position:relative;padding:0 0 16px}
 .s-tl div::before{content:"";position:absolute;left:-27px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--acc)}
 .site svg.radar{width:100%;max-width:240px;height:auto;display:block}.site .radar text{fill:var(--muted);font-size:10px}
+.site .rt{display:inline-grid;place-items:center;min-width:30px;padding:1px 5px;border-radius:6px;font-size:11px;font-weight:800;color:#fff;background:#64748b;font-variant-numeric:tabular-nums}.site .rt.r8{background:#16a34a}.site .rt.r7{background:#65a30d}.site .rt.r6{background:#ca8a04}.site .rt.r5{background:#dc2626}.s-pitch .p .rt{position:absolute;top:-9px;left:6px;font-size:10px;min-width:26px;padding:0 4px}.site .res.W{background:#16a34a}.site .res.D{background:#64748b}.site .res.L{background:#dc2626}
+.site .s-crest.gen{background:transparent;border-radius:0}
+.s-clubs{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.s-clubs a{display:flex;flex-direction:column;align-items:center;gap:6px;width:92px;padding:10px 4px;border-radius:12px;background:var(--card);border:1px solid var(--line);text-align:center;transition:transform .15s,border-color .15s}
+.s-clubs a:hover{transform:translateY(-2px);border-color:var(--acc)}
+.s-clubs .s-crest.lg{width:48px;height:48px}
+.s-clubs small{font-size:10.5px;color:var(--muted);line-height:1.3;max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head><body><script id="js-core">/* ===== core: utilities, images, calculations (shared by admin + exported site) ===== */
 const $ = (s, r = document) => r.querySelector(s);
@@ -692,9 +701,15 @@ const stripMd = s => String(s || '').replace(/[#*>\-\[\]!]|\(http[^)]*\)/g, '').
 const IMG = {};
 const src = r => !r ? '' : r.startsWith('img:') ? (IMG[r.slice(4)] || '') : r;
 const initials = n => String(n || '?').replace(/^(FC|AFC|CF|SC)\s+/i, '').trim().slice(0, 2).toUpperCase();
+const hueOf = s => [...String(s || '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 360;
+/** stand-in crest: a shield coloured from the club name, so tables never look empty */
+function crestSVG(name) {
+  const h = hueOf(name);
+  return `<svg viewBox="0 0 40 46" width="100%" height="100%" aria-hidden="true"><path d="M20 1.5 38 7v15c0 12-8 19-18 23C10 41 2 34 2 22V7z" fill="hsl(${h} 52% 36%)" stroke="hsl(${h} 60% 72%)" stroke-width="2"/><path d="M2.5 15h35v6h-35z" fill="hsl(${(h + 45) % 360} 65% 58%)" opacity=".6"/><text x="20" y="33" text-anchor="middle" font-size="12.5" font-weight="800" fill="#fff" font-family="system-ui,sans-serif">${esc(initials(name))}</text></svg>`;
+}
 function crest(team, cls = '') {
   const s = src(team?.logo);
-  return s ? `<img class="crest ${cls}" src="${esc(s)}" alt="" loading="lazy">` : `<span class="crest ${cls}">${esc(initials(team?.short || team?.name))}</span>`;
+  return s ? `<img class="crest ${cls}" src="${esc(s)}" alt="" loading="lazy">` : `<span class="crest gen ${cls}">${crestSVG(team?.short || team?.name)}</span>`;
 }
 function avatar(p, cls = '') {
   const s = src(p?.photo);
@@ -912,6 +927,26 @@ const Chart = {
 
 function evName(e, k = 'pid', nk = 'name') { return e[k] ? pname(e[k]) : (e[nk] || ''); }
 
+/* ----- per-match ratings / match log (admin + public site) ----- */
+const rtClass = r => num(r) >= 8 ? 'r8' : num(r) >= 7 ? 'r7' : num(r) >= 6 ? 'r6' : 'r5';
+const rtBadge = (r, cls = '') => r === '' || r == null ? '' : `<span class="rt ${rtClass(r)} ${cls}">${num(r).toFixed(1)}</span>`;
+function playerMatchLog(pid, season) {
+  return matchesFor({ season, done: true }).map(m => {
+    const min = minutesIn(m, pid); if (min == null) return null;
+    const ev = m.events || [];
+    return { m, min, started: (m.lineup?.starters || []).some(s => s.pid === pid), g: ev.filter(e => ['goal', 'pen'].includes(e.type) && e.pid === pid && e.teamId === own()).length, a: ev.filter(e => e.assistPid === pid).length, y: ev.some(e => e.type === 'yellow' && e.pid === pid), r: ev.some(e => e.type === 'red' && e.pid === pid), rating: m.ratings?.[pid] ?? '', motm: m.motm === pid };
+  }).filter(Boolean);
+}
+/** table of a player's matches; link(m) gives the href for a match row */
+function matchLogHTML(pid, season, { cls = 'tbl', link = m => '#/matches/' + m.id } = {}) {
+  const log = playerMatchLog(pid, season);
+  if (!log.length) return '<div style="padding:16px;opacity:.7">このシーズンの出場記録はまだありません</div>';
+  const rated = log.filter(x => x.rating !== ''), avg = rated.length ? sum(rated, x => num(x.rating)) / rated.length : null;
+  const chart = rated.length >= 2 ? Chart.line([{ data: rated.map(x => num(x.rating)), color: 'var(--accent, var(--acc))' }], { labels: rated.map(x => fmtDate(x.m.date).slice(5)), h: 140, min: Math.max(0, Math.floor(Math.min(...rated.map(x => num(x.rating)))) - 1), max: 10 }) : '';
+  return `<div style="display:flex;gap:18px;flex-wrap:wrap;padding:12px 14px;align-items:center"><div><small style="opacity:.7">平均評価</small><div style="font-size:24px;font-weight:900">${avg != null ? avg.toFixed(2) : '—'}</div></div><div><small style="opacity:.7">出場</small><div style="font-size:24px;font-weight:900">${log.length}</div></div><div><small style="opacity:.7">MOM</small><div style="font-size:24px;font-weight:900">${log.filter(x => x.motm).length}</div></div></div>${chart ? `<div style="padding:0 10px">${chart}</div>` : ''}
+    <div style="overflow-x:auto"><table class="${cls}"><thead><tr><th>日付</th><th>対戦</th><th>結果</th><th>出場</th><th>G</th><th>A</th><th>評価</th></tr></thead><tbody>${log.slice().reverse().map(x => { const r = resultOf(x.m), [f, ag] = gfga(x.m); return `<tr style="cursor:pointer" onclick="location.hash='${link(x.m).replace(/^#/, '')}'"><td>${fmtDate(x.m.date).slice(5)}</td><td>${x.m.homeId === own() ? 'vs' : '@'} ${esc(teamName(oppOf(x.m)))}</td><td><span class="res ${r} ${r}" style="display:inline-grid;place-items:center;width:20px;height:20px;border-radius:5px;color:#fff;font-size:10px;font-weight:800">${r}</span> ${f}-${ag}</td><td>${x.min}'${x.started ? '' : ' <small style="opacity:.6">途中</small>'}</td><td>${x.g || ''}</td><td>${x.a || ''}</td><td>${rtBadge(x.rating)}${x.motm ? ' ⭐' : ''}${x.y ? ' 🟨' : ''}${x.r ? ' 🟥' : ''}</td></tr>`; }).join('')}</tbody></table></div>`;
+}
+
 /* ===== public club website (rendered in-app as preview and exported as standalone HTML) ===== */
 const SITE_BG = { white: '#f5f6f8', navy: '#0b1430', blue: '#0b3a8c', yellow: '#f2c200', red: '#b40f1e', wine: '#5c0f24', green: '#0d5a2c', black: '#07080b' };
 const Site = {
@@ -925,7 +960,7 @@ const Site = {
     const [p, qs] = path.split('?'); this.q = new URLSearchParams(qs || '');
     const parts = p.split('/').filter(Boolean);
     const page = (this.pages[parts[0] || 'home'] || this.pages.home).call(this, parts[1]);
-    const nav = [['news', 'News'], ['tv', 'TV'], ['club', 'Club'], ['transfers', 'Transfers'], ['results', 'Matches'], ['table', 'Table'], ['stats', 'Stats'], ['players', 'Squad'], ['history', 'History']].filter(([k]) => d.menu[{ results: 'matches', players: 'squad' }[k] || k] !== false);
+    const nav = [['news', 'News'], ['tv', 'TV'], ['club', 'Club'], ['transfers', 'Transfers'], ['results', 'Matches'], ['table', 'Table'], ['stats', 'Stats'], ['players', 'Squad'], ['awards', 'Awards'], ['history', 'History']].filter(([k]) => d.menu[{ results: 'matches', players: 'squad' }[k] || k] !== false);
     clearInterval(this.heroTimer);
     root.innerHTML = `<div class="site ${d.scheme === 'light' ? 'light' : ''}" style="--acc:${esc(d.accent)};--hbg:${esc(hbg)};--hink:${light ? '#111' : '#fff'}">
       <header class="s-head ${d.header === 'center' ? 'center' : ''}"><div class="in"><a class="brand" href="${this.link('/')}">${src(t?.logo) ? `<img src="${esc(src(t.logo))}" alt="">` : ''}<span>${esc(t?.name || c.name)}</span></a>
@@ -949,7 +984,8 @@ const Site = {
     $$('[data-sq]', root).forEach(s => s.onchange = () => { const q = new URLSearchParams(location.hash.split('?')[1] || ''); q.set(s.dataset.sq, s.value); location.hash = location.hash.split('?')[0] + '?' + q; });
   },
   /* ---- partials ---- */
-  crest(t, cls = '') { const s = src(t?.logo); return s ? `<img class="s-crest ${cls}" src="${esc(s)}" alt="" loading="lazy">` : `<span class="s-crest ${cls}">${esc(initials(t?.name))}</span>`; },
+  crest(t, cls = '') { const s = src(t?.logo); return s ? `<img class="s-crest ${cls}" src="${esc(s)}" alt="" loading="lazy">` : `<span class="s-crest gen ${cls}">${crestSVG(t?.short || t?.name)}</span>`; },
+  tlink(id, inner) { return id && id !== own() ? `<a href="${this.link('/team/' + id)}" style="display:inline-flex;align-items:center;gap:8px">${inner}</a>` : inner; },
   av(p) { const s = src(p?.photo); return s ? `<img class="s-av" src="${esc(s)}" loading="lazy">` : `<span class="s-av">${esc(p?.number ?? '')}</span>`; },
   sh(en, ja, more) { return `<div class="s-h"><div><div class="en">${en}</div><h2>${ja}</h2></div>${more ? `<a class="more" href="${this.link(more[0])}">${more[1]} →</a>` : ''}</div>`; },
   mcard(m) {
@@ -965,7 +1001,7 @@ const Site = {
   table(k, compact) {
     const rows = standings(k); if (!rows.length) return '<div class="s-empty">順位表はまだありません</div>';
     let list = rows; if (compact) { const i = rows.findIndex(r => r.id === own()); const s = Math.max(0, Math.min(rows.length - 6, i - 3)); list = rows.slice(s, s + 6); }
-    return `<div class="s-scroll"><table class="s-tbl"><thead><tr><th>#</th><th>クラブ</th><th>試合</th><th>勝</th><th>分</th><th>負</th>${compact ? '' : '<th>得点</th><th>失点</th>'}<th>得失</th><th>勝点</th></tr></thead><tbody>${list.map(r => { const z = zoneOf(k, r.rank, rows.length); return `<tr class="${r.id === own() ? 'me' : ''}"><td style="box-shadow:inset 3px 0 ${z ? z.c : 'transparent'}">${r.rank}</td><td><span class="tm">${this.crest(teamById(r.id))}${esc(teamName(r.id))}</span></td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td>${compact ? '' : `<td>${r.gf}</td><td>${r.ga}</td>`}<td>${r.gd > 0 ? '+' : ''}${r.gd}</td><td><b>${r.pts}</b></td></tr>`; }).join('')}</tbody></table></div>`;
+    return `<div class="s-scroll"><table class="s-tbl"><thead><tr><th>#</th><th>クラブ</th><th>試合</th><th>勝</th><th>分</th><th>負</th>${compact ? '' : '<th>得点</th><th>失点</th>'}<th>得失</th><th>勝点</th></tr></thead><tbody>${list.map(r => { const z = zoneOf(k, r.rank, rows.length); return `<tr class="${r.id === own() ? 'me' : ''}"><td style="box-shadow:inset 3px 0 ${z ? z.c : 'transparent'}">${r.rank}</td><td>${this.tlink(r.id, `<span class="tm">${this.crest(teamById(r.id))}${esc(teamName(r.id))}</span>`)}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td>${compact ? '' : `<td>${r.gf}</td><td>${r.ga}</td>`}<td>${r.gd > 0 ? '+' : ''}${r.gd}</td><td><b>${r.pts}</b></td></tr>`; }).join('')}</tbody></table></div>`;
   },
   pubNews() { return C().news.filter(n => n.status === 'published' && (!n.date || n.date <= '9999')).sort(by(n => n.date || '', -1)); },
   season() { return this.q.get('s') || curSeason(); },
@@ -983,7 +1019,7 @@ const Site = {
       const newsSec = news.length ? `<section class="s-sec">${this.sh('NEWS', 'ニュース', ['/news', 'すべて見る'])}<div class="s-grid s-g3">${news.slice(0, 3).map(n => this.ncard(n)).join('')}</div></section>` : '';
       const ps = playersOf().filter(p => p.visible !== false);
       const players = c.design.menu.squad !== false && ps.length ? `<section class="s-sec">${this.sh('PLAYERS', '選手', ['/players', '選手を見る'])}<div class="s-grid s-g4">${ps.slice(0, 4).map(p => this.pcard(p)).join('')}</div></section>` : '';
-      const hist = `<section class="s-sec">${this.sh('CLUB HISTORY', 'クラブ史')}<div class="s-grid s-g3">${[['/stats', '選手記録', 'PLAYER RECORDS'], ['/history', 'シーズン記録', 'SEASON RECORDS'], ['/trophies', 'トロフィールーム', 'TROPHY ROOM']].map(([h, j, e]) => `<a class="s-card s-kpi" href="${this.link(h)}"><div class="k">${e}</div><div style="font-weight:800;font-size:18px;margin-top:6px">${j}</div></a>`).join('')}</div></section>`;
+      const hist = `<section class="s-sec">${this.sh('CLUB HISTORY', 'クラブ史')}<div class="s-grid s-g3">${[['/stats', '選手記録', 'PLAYER RECORDS'], ['/awards', 'シーズン表彰', 'AWARDS'], ['/trophies', 'トロフィールーム', 'TROPHY ROOM']].map(([h, j, e]) => `<a class="s-card s-kpi" href="${this.link(h)}"><div class="k">${e}</div><div style="font-weight:800;font-size:18px;margin-top:6px">${j}</div></a>`).join('')}</div></section>`;
       const vids = c.videos.slice().sort(by(v => v.date || '', -1));
       const tv = vids.length && c.design.menu.tv !== false ? `<section class="s-sec">${this.sh('CLUB TV', '動画', ['/tv', 'すべて見る'])}<div class="s-grid s-g3">${vids.slice(0, 3).map(v => `<a class="s-card s-news" href="${this.link('/tv')}"><div class="img"><img src="https://i.ytimg.com/vi/${esc(v.youtube)}/hqdefault.jpg" loading="lazy"></div><div class="bd"><small>${fmtDate(v.date, { dot: true })}</small><b>${esc(v.title)}</b></div></a>`).join('')}</div></section>` : '';
       return c.design.layout === 2 ? hero + newsSec + latest + table + players + tv + hist : hero + latest + table + newsSec + players + hist + tv;
@@ -1032,8 +1068,8 @@ const Site = {
       const lu = m.lineup || { starters: [], bench: [] }, slots = formationSlots(lu.formation || '4-3-3');
       const evs = (m.events || []).slice().sort(by(e => num(e.minute)));
       const badge = pid => evs.filter(e => (['goal', 'pen'].includes(e.type) && e.pid === pid)).map(() => '⚽').join('') + (evs.some(e => e.type === 'yellow' && e.pid === pid) ? '🟨' : '') + (evs.some(e => e.type === 'red' && e.pid === pid) ? '🟥' : '');
-      const ownLine = lu.starters?.some(s => s.pid) ? `<div class="s-card" style="padding:14px"><div style="display:flex;justify-content:space-between;margin-bottom:10px"><b>${esc(teamName(own()))}</b><span style="color:var(--muted)">${esc(lu.formation)}</span></div><div class="s-pitch">${slots.map(s => { const st = lu.starters.find(x => x.key === s.key), p = st && playerById(st.pid); if (!p) return ''; const out = evs.find(e => e.type === 'sub' && e.outPid === p.id); return `<a class="p" href="${this.link('/player/' + p.id)}" style="left:${s.x}%;top:${s.y * .92 + 4}%"><em>${badge(p.id)}${out ? `🔻${out.minute}'` : ''}</em><i>${src(p.photo) ? `<img src="${esc(src(p.photo))}">` : esc(p.number ?? '')}</i><b>${esc(p.number ?? '')} ${esc(shortNameS(p.name))}</b></a>`; }).join('')}</div>
-        <div style="margin-top:12px;font-size:13px"><b style="color:var(--muted);font-size:12px">SUBSTITUTES</b>${(lu.bench || []).map(pid => { const p = playerById(pid); if (!p) return ''; const inn = evs.find(e => e.type === 'sub' && e.inPid === pid); return `<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)"><b style="width:24px">${esc(p.number ?? '')}</b><span>${esc(p.name)}</span><span style="margin-left:auto;color:var(--muted)">${inn ? `↑ ${inn.minute}'` : ''} ${badge(pid)}</span></div>`; }).join('')}</div></div>` : '';
+      const ownLine = lu.starters?.some(s => s.pid) ? `<div class="s-card" style="padding:14px"><div style="display:flex;justify-content:space-between;margin-bottom:10px"><b>${esc(teamName(own()))}</b><span style="color:var(--muted)">${esc(lu.formation)}</span></div><div class="s-pitch">${slots.map(s => { const st = lu.starters.find(x => x.key === s.key), p = st && playerById(st.pid); if (!p) return ''; const out = evs.find(e => e.type === 'sub' && e.outPid === p.id); return `<a class="p" href="${this.link('/player/' + p.id)}" style="left:${s.x}%;top:${s.y * .92 + 4}%">${rtBadge(m.ratings?.[p.id])}<em>${m.motm === p.id ? '⭐' : ''}${badge(p.id)}${out ? `🔻${out.minute}'` : ''}</em><i>${src(p.photo) ? `<img src="${esc(src(p.photo))}">` : esc(p.number ?? '')}</i><b>${esc(p.number ?? '')} ${esc(shortNameS(p.name))}</b></a>`; }).join('')}</div>
+        <div style="margin-top:12px;font-size:13px"><b style="color:var(--muted);font-size:12px">SUBSTITUTES</b>${(lu.bench || []).map(pid => { const p = playerById(pid); if (!p) return ''; const inn = evs.find(e => e.type === 'sub' && e.inPid === pid); return `<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)"><b style="width:24px">${esc(p.number ?? '')}</b><span>${esc(p.name)}</span><span style="margin-left:auto;color:var(--muted)">${inn ? `↑ ${inn.minute}'` : ''} ${badge(pid)} ${rtBadge(m.ratings?.[pid])}${m.motm === pid ? ' ⭐' : ''}</span></div>`; }).join('')}</div></div>` : '';
       const opp = m.opp?.starters ? `<div class="s-card" style="padding:14px"><div style="display:flex;justify-content:space-between;margin-bottom:10px"><b>${esc(teamName(oppOf(m)))}</b><span style="color:var(--muted)">${esc(m.opp.formation || '')}</span></div>${m.opp.starters.split('\n').filter(Boolean).map(l => `<div style="padding:5px 0;border-bottom:1px solid var(--line);font-size:13px">${esc(l)}</div>`).join('')}${m.opp.bench ? `<b style="display:block;margin-top:10px;color:var(--muted);font-size:12px">SUBSTITUTES</b>${m.opp.bench.split('\n').filter(Boolean).map(l => `<div style="padding:4px 0;font-size:13px">${esc(l)}</div>`).join('')}` : ''}</div>` : '';
       const stats = STAT_KEYS_S.filter(([k]) => m.stats?.[k] && (m.stats[k][0] !== '' || m.stats[k][1] !== '')).map(([k, l]) => { const [a, b] = m.stats[k].map(num); const t = a + b || 1; return `<div class="s-stat"><div class="k"><span>${a}${k === 'possession' || k === 'passAcc' ? '%' : ''}</span><span>${l}</span><span>${b}${k === 'possession' || k === 'passAcc' ? '%' : ''}</span></div><div class="b"><i style="width:${a / t * 100}%"></i><i style="width:${b / t * 100}%"></i></div></div>`; }).join('');
       const article = C().news.find(n => n.matchId === id && n.status === 'published');
@@ -1046,7 +1082,7 @@ const Site = {
     },
     table() {
       const c = C(), s = this.season(), ks = c.competitions.filter(k => k.season === s && k.format !== 'cup' && k.showTable !== false);
-      return `${this.sh('TABLE', '順位表')}<div class="s-filter">${this.seasonSel()}</div>${ks.length ? ks.map(k => `<section class="s-sec"><h3 style="margin:0 0 10px">${esc(k.name)}</h3><div class="s-card">${this.table(k)}</div><div style="display:flex;gap:14px;margin-top:8px;font-size:12px;color:var(--muted)">${[['top1', '#3b82f6'], ['top2', '#f59e0b'], ['bottom', '#ef4444']].filter(([z]) => num(k.zones?.[z])).map(([z, col]) => `<span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${col};margin-right:5px"></i>${esc(k.zones[z + 'Label'] || '')}</span>`).join('')}</div></section>`).join('') : '<div class="s-empty">順位表はまだありません</div>'}`;
+      return `${this.sh('TABLE', '順位表')}<div class="s-filter">${this.seasonSel()}</div>${ks.length ? ks.map(k => `<section class="s-sec"><h3 style="margin:0 0 10px">${esc(k.name)}</h3><div class="s-card">${this.table(k)}</div><div class="s-clubs">${standings(k).map(r => r.id === own() ? '' : `<a href="${this.link('/team/' + r.id)}" title="${esc(teamName(r.id))}">${this.crest(teamById(r.id), 'lg')}<small>${esc(teamName(r.id))}</small></a>`).join('')}</div><div style="display:flex;gap:14px;margin-top:8px;font-size:12px;color:var(--muted)">${[['top1', '#3b82f6'], ['top2', '#f59e0b'], ['bottom', '#ef4444']].filter(([z]) => num(k.zones?.[z])).map(([z, col]) => `<span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${col};margin-right:5px"></i>${esc(k.zones[z + 'Label'] || '')}</span>`).join('')}</div></section>`).join('') : '<div class="s-empty">順位表はまだありません</div>'}`;
     },
     stats() {
       const s = this.season(), ms = matchesFor({ season: s, done: true }), r = teamRecord(ms), lg = ms.filter(m => compById(m.compId)?.format === 'league');
@@ -1057,8 +1093,9 @@ const Site = {
       return `${this.sh('STATS', 'スタッツ')}<div class="s-filter">${this.seasonSel()}</div>
         <div class="s-grid s-g4" style="margin-bottom:22px">${[['勝', r.w], ['分', r.d], ['負', r.l], ['勝率', r.wr + '%']].map(([k, v]) => `<div class="s-card s-kpi"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('')}</div>
         <div class="s-grid s-g2" style="margin-bottom:22px"><div class="s-card s-kpi"><div class="k">HOME 勝利数（リーグ戦）</div><div class="v">${lr.hw}</div></div><div class="s-card s-kpi"><div class="k">AWAY 勝利数（リーグ戦）</div><div class="v">${lr.aw}</div></div></div>
+        ${(() => { const n = ms.length, rr = all.filter(x => x.avg && x.apps >= Math.max(1, n / 3)).sort(by(x => x.avg, -1)).slice(0, 5); return rr.length ? `<h3>選手ランキング — 平均評価</h3><div class="s-card" style="margin-bottom:22px">${rr.map((x, i) => `<a class="s-rank" href="${this.link('/player/' + x.p.id)}"><span class="i">${pad(i + 1)}</span>${this.av(x.p)}<div><b>${esc(x.p.name)}</b><div style="color:var(--muted);font-size:12px">${x.apps}試合 ・ MOM ${x.motm || 0}回</div></div><div class="v">${rtBadge(x.avg)}</div></a>`).join('')}</div>` : ''; })()}
         <div class="s-grid s-g2"><div><h3>選手ランキング — 得点</h3><div class="s-card">${rank('g', 'G')}</div></div><div><h3>選手ランキング — アシスト</h3><div class="s-card">${rank('a', 'A')}</div></div></div>
-        <section class="s-sec" style="margin-top:26px"><h3>全選手成績</h3><div class="s-card s-scroll"><table class="s-tbl"><thead><tr><th>#</th><th>選手</th><th>試合</th><th>分</th><th>得点</th><th>アシスト</th></tr></thead><tbody>${all.filter(x => x.apps).sort(by(x => x.g * 100 + x.a, -1)).map(x => `<tr><td>${esc(x.p.number ?? '')}</td><td><a class="tm" href="${this.link('/player/' + x.p.id)}">${esc(x.p.name)}</a></td><td>${x.apps}</td><td>${x.min || '—'}</td><td>${x.g}</td><td>${x.a}</td></tr>`).join('') || '<tr><td colspan="6">データなし</td></tr>'}</tbody></table></div></section>`;
+        <section class="s-sec" style="margin-top:26px"><h3>全選手成績</h3><div class="s-card s-scroll"><table class="s-tbl"><thead><tr><th>#</th><th>選手</th><th>試合</th><th>分</th><th>得点</th><th>アシスト</th><th>評価</th></tr></thead><tbody>${all.filter(x => x.apps).sort(by(x => x.g * 100 + x.a, -1)).map(x => `<tr><td>${esc(x.p.number ?? '')}</td><td><a class="tm" href="${this.link('/player/' + x.p.id)}">${esc(x.p.name)}</a></td><td>${x.apps}</td><td>${x.min || '—'}</td><td>${x.g}</td><td>${x.a}</td><td>${rtBadge(x.avg)}</td></tr>`).join('') || '<tr><td colspan="7">データなし</td></tr>'}</tbody></table></div></section>`;
     },
     players(id) {
       const ps = playersOf(this.season()).filter(p => p.visible !== false);
@@ -1073,12 +1110,35 @@ const Site = {
         <div class="s-prof" style="margin-top:14px"><div class="s-pl" style="aspect-ratio:4/5">${src(p.photo) ? `<img src="${esc(src(p.photo))}">` : ''}<span class="no" style="font-size:60px">${esc(p.number ?? '')}</span></div>
         <div><div class="s-num">${esc(p.number ?? '')}</div><div class="s-big">${esc(p.name)}</div><div style="color:var(--muted);margin-bottom:18px">${esc(p.sub || '')}</div>
           <div class="s-kv">${[['出身', p.nationality], ['身長', p.height && p.height + ' cm'], ['体重', p.weight && p.weight + ' kg'], ['年齢', ageOf(p.birth) != null && ageOf(p.birth) + ' 歳'], ['在籍年数', yrs && yrs + ' 年目'], ['利き足', p.foot], ['ポジション', [p.positions?.main || p.pos, ...(p.positions?.subs || [])].join(' / ')]].filter(([, v]) => v).map(([k, v]) => `<div><small>${k}</small><b>${esc(v)}</b></div>`).join('')}</div>
+          ${(() => { const h = (p.ovrHist || []).filter(x => x.ovr !== '' && x.ovr != null); if (!h.length) return ''; const l = h.at(-1); return `<div class="s-grid s-g2" style="margin-top:18px"><div class="s-card s-kpi"><div class="k">OVR</div><div class="v" style="color:var(--acc)">${l.ovr}</div></div><div class="s-card s-kpi"><div class="k">POTENTIAL</div><div class="v">${l.pot || '—'}</div></div></div>${h.length > 1 ? `<div class="s-card" style="margin-top:12px;padding:12px"><small style="color:var(--muted)">能力値の推移</small>${Chart.line([{ data: h.map(x => x.ovr), color: 'var(--acc)' }], { labels: h.map(x => x.season), h: 150, min: Math.max(0, Math.min(...h.map(x => x.ovr)) - 5), max: 99 })}</div>` : ''}`; })()}
           ${p.params?.show && p.params.items?.some(i => i.name) ? `<div class="s-card" style="margin-top:18px;padding:14px;display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div class="s-kpi" style="padding:0 10px"><div class="k">OVERALL</div><div class="v" style="color:var(--acc)">${p.params.overall || Math.round(sum(p.params.items.filter(i => i.name), i => num(i.value)) / p.params.items.filter(i => i.name).length)}</div></div>${Chart.radar(p.params.items.filter(i => i.name), 220).replace('var(--line2)', 'var(--line)')}</div>` : ''}
           ${p.bio ? `<h3 style="margin-top:22px">選手紹介</h3><div class="s-prose" style="white-space:pre-wrap;font-size:15px">${esc(p.bio)}</div>` : ''}
           <h3 style="margin-top:22px">大会成績 <small style="color:var(--muted);font-weight:500">${esc(curSeason())}${comps ? ' / ' + esc(comps) : ''}</small></h3><div class="s-grid s-g3">${[['試合', cur.apps], ['得点', cur.g], ['アシスト', cur.a]].map(([k, v]) => `<div class="s-card s-kpi"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('')}</div>
+          <h3 style="margin-top:22px">試合ごとの成績 <small style="color:var(--muted);font-weight:500">${esc(this.season())}</small></h3><div class="s-filter">${this.seasonSel()}</div><div class="s-card">${matchLogHTML(p.id, this.season(), { cls: 's-tbl', link: x => this.link('/match/' + x.id) })}</div>
           ${car.length ? `<h3 style="margin-top:22px">シーズン別成績</h3><div class="s-card s-scroll"><table class="s-tbl"><thead><tr><th>シーズン</th><th>クラブ</th><th>試合</th><th>分</th><th>G</th><th>A</th></tr></thead><tbody>${car.slice().reverse().map(x => `<tr><td>${x.season}</td><td>${esc(teamName(own()))}</td><td>${x.apps}</td><td>${x.min || '—'}</td><td>${x.g}</td><td>${x.a}</td></tr>`).join('')}</tbody></table></div>` : ''}
           ${Object.values(p.sns || {}).some(Boolean) ? `<div style="display:flex;gap:8px;margin-top:18px">${Object.entries(p.sns).filter(([, v]) => v).map(([n, v]) => `<a class="s-btn ghost" href="${esc(v)}" target="_blank" rel="noopener">${esc({ x: 'X', youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram' }[n] || n)}</a>`).join('')}</div>` : ''}
         </div></div>`;
+    },
+    team(id) {
+      const t = teamById(id); if (!t) return '<div class="s-empty">クラブが見つかりません</div>';
+      if (id === own()) return this.pages.club.call(this);
+      const ms = matchesFor({ teamId: id }), done = ms.filter(isDone), next = ms.find(m => !isDone(m)), rec = teamRecord(done);
+      const comps = C().competitions.filter(k => k.season === curSeason() && k.format !== 'cup' && (k.teamIds || []).includes(id));
+      const v = t.venue || {};
+      return `<div class="s-card" style="overflow:hidden;margin-bottom:22px">${v.image ? `<div style="height:220px;background:url('${esc(v.image)}') center/cover;position:relative"><div style="position:absolute;inset:0;background:linear-gradient(transparent 30%,var(--card))"></div></div>` : ''}
+        <div style="padding:22px;display:flex;gap:20px;align-items:center;flex-wrap:wrap;${v.image ? 'margin-top:-70px;position:relative' : ''}">${this.crest(t, 'lg')}<div><div class="s-big">${esc(t.name)}</div><div style="color:var(--muted)">${[t.country, v.name && `🏟 ${v.name}${v.capacity ? ` (${Number(v.capacity).toLocaleString()}人)` : ''}`, v.city].filter(Boolean).map(esc).join(' ・ ')}</div></div></div></div>
+        ${comps.length ? `<div class="s-grid s-g${Math.min(3, comps.length)}" style="margin-bottom:22px">${comps.map(k => { const r = standings(k).find(x => x.id === id); return `<a class="s-card s-kpi" href="${this.link('/table')}"><div class="k">${esc(k.name)}</div><div class="v">${r ? r.rank + '位' : '—'}</div><div style="color:var(--muted);font-size:13px">勝点${r?.pts ?? 0} ・ ${r?.w ?? 0}勝${r?.d ?? 0}分${r?.l ?? 0}敗</div></a>`; }).join('')}</div>` : ''}
+        <h3>${esc(teamName(own()))} との通算対戦成績</h3><div class="s-grid s-g4" style="margin-bottom:22px">${[['試合', rec.p], ['勝', rec.w], ['分', rec.d], ['敗', rec.l]].map(([k, x]) => `<div class="s-card s-kpi"><div class="v">${x}</div><div class="k">${k}</div></div>`).join('')}</div>
+        ${next ? `<h3>次の対戦</h3><div class="s-grid s-g3" style="margin-bottom:22px">${this.mcard(next)}</div>` : ''}
+        <h3>過去の対戦</h3>${done.length ? `<div class="s-grid s-g3">${done.slice().reverse().slice(0, 12).map(m => this.mcard(m)).join('')}</div>` : '<div class="s-empty">まだ対戦していません</div>'}`;
+    },
+    awards() {
+      const ss = allSeasons(), s = this.season(), r = Awards.compute(s);
+      if (!r.matches) return `${this.sh('AWARDS', 'シーズン表彰')}<div class="s-filter">${this.seasonSel()}</div><div class="s-empty">このシーズンの記録はまだありません</div>`;
+      const slots = formationSlots('4-3-3'), g = { GK: [], DF: [], MF: [], FW: [] }; r.xi.forEach(x => g[x.p.pos].push(x)); const flat = [...g.GK, ...g.DF, ...g.MF, ...g.FW];
+      return `${this.sh('AWARDS', `${esc(s)} シーズン表彰`)}<div class="s-filter">${this.seasonSel()}</div>
+        <div class="s-grid s-g3" style="margin-bottom:26px">${Object.entries(Awards.LABELS).filter(([k]) => r[k]?.p).map(([k, [i, l]]) => `<a class="s-card s-trophy" href="${this.link('/player/' + r[k].pid)}"><span style="font-size:40px">${i}</span><small style="color:var(--acc);font-weight:800;letter-spacing:.1em">${l}</small>${src(r[k].p.photo) ? `<img src="${esc(src(r[k].p.photo))}" style="width:96px;height:96px;border-radius:50%;object-fit:cover">` : ''}<b style="font-size:18px">${esc(r[k].p.name)}</b><small style="color:var(--muted)">${esc(Awards.line(k, r[k]))}</small></a>`).join('')}</div>
+        <h3>シーズンベストイレブン</h3><div style="max-width:520px"><div class="s-pitch">${slots.map((sl, i) => { const x = flat[i]; return x ? `<a class="p" href="${this.link('/player/' + x.pid)}" style="left:${sl.x}%;top:${sl.y * .92 + 4}%"><i>${src(x.p.photo) ? `<img src="${esc(src(x.p.photo))}">` : esc(x.p.number ?? '')}</i><b>${esc(shortNameS(x.p.name))}</b></a>` : ''; }).join('')}</div></div>`;
     },
     trophies() {
       const ts = C().trophies;
@@ -1102,7 +1162,7 @@ const Site = {
     const evs = (m.events || []).filter(e => ['goal', 'pen', 'og'].includes(e.type)).sort(by(e => num(e.minute)));
     const forHome = e => e.type === 'og' ? e.teamId !== m.homeId : e.teamId === m.homeId;
     return `<div style="text-align:center;padding-top:18px;font-size:12px;color:var(--muted);letter-spacing:.1em;font-weight:700">${esc(compLabel(m).toUpperCase())} ${roundLabel(m) ? '・ ' + esc(roundLabel(m)) : ''}<br>${fmtDate(m.date, { wd: true })} ${esc(m.time || '')} ・ ${isDone(m) ? '試合終了' : '試合前'}</div>
-      <div class="s-score"><div class="t">${this.crest(teamById(m.homeId), big ? 'lg' : '')}${esc(teamName(m.homeId))}</div><div class="n">${isDone(m) ? `${m.hs} - ${m.as}` : 'VS'}${m.pk?.h !== '' && m.pk?.h != null && isDone(m) ? `<div style="font-size:14px;color:var(--muted)">PK ${m.pk.h}-${m.pk.a}</div>` : ''}</div><div class="t">${this.crest(teamById(m.awayId), big ? 'lg' : '')}${esc(teamName(m.awayId))}</div></div>
+      <div class="s-score"><div class="t">${big ? this.tlink(m.homeId, `<span style="display:flex;flex-direction:column;align-items:center;gap:10px">${this.crest(teamById(m.homeId), 'lg')}${esc(teamName(m.homeId))}</span>`) : `${this.crest(teamById(m.homeId))}${esc(teamName(m.homeId))}`}</div><div class="n">${isDone(m) ? `${m.hs} - ${m.as}` : 'VS'}${m.pk?.h !== '' && m.pk?.h != null && isDone(m) ? `<div style="font-size:14px;color:var(--muted)">PK ${m.pk.h}-${m.pk.a}</div>` : ''}</div><div class="t">${big ? this.tlink(m.awayId, `<span style="display:flex;flex-direction:column;align-items:center;gap:10px">${this.crest(teamById(m.awayId), 'lg')}${esc(teamName(m.awayId))}</span>`) : `${this.crest(teamById(m.awayId))}${esc(teamName(m.awayId))}`}</div></div>
       ${evs.length ? `<div class="s-scorers"><div>${evs.filter(forHome).map(e => `${e.minute}' ${esc(evName(e))}${e.type === 'og' ? ' (OG)' : e.type === 'pen' ? ' (PK)' : ''}`).join('<br>')}</div><div>${evs.filter(e => !forHome(e)).map(e => `${e.minute}' ${esc(evName(e))}${e.type === 'og' ? ' (OG)' : e.type === 'pen' ? ' (PK)' : ''}`).join('<br>')}</div></div>` : ''}`;
   },
 };
@@ -1110,7 +1170,38 @@ const STAT_KEYS_S = [['possession', 'ポゼッション'], ['shots', 'シュー�
 const EV_S = { goal: '⚽', pen: '⚽', og: '⚽', yellow: '🟨', red: '🟥', sub: '🔁', pkmiss: '❌' };
 const shortNameS = n => { if (String(n || '').length <= 12) return n; const s = String(n || '').trim().split(/\s+/); return s.length > 1 && s.at(-1).length > 2 ? s.at(-1) : s.join(' '); };
 function lum(hex) { const n = parseInt(hex.slice(1), 16); return (0.299 * (n >> 16) + 0.587 * (n >> 8 & 255) + 0.114 * (n & 255)) / 255; }
-/* boot when running as an exported standalone site */
+/* season awards (shared by admin + public site) */
+const Awards = {
+  score(s, p) { return (s.avg ? (s.avg - 6) * s.apps * 1.5 : 0) + s.g * 3 + s.a * 2 + s.motm * 2 + ((p?.pos === 'GK' || p?.pos === 'DF') ? s.cs * 1.5 : 0) + s.apps * .3; },
+  compute(season) {
+    const ms = matchesFor({ season, done: true }), S = playerStats({ ms }), n = ms.length;
+    const rows = Object.values(S).map(s => ({ ...s, p: playerById(s.pid) })).filter(x => x.p);
+    rows.forEach(x => x.sc = this.score(x, x.p));
+    const regular = rows.filter(x => x.apps >= Math.max(1, n / 3));
+    const top = (list, f) => list.slice().sort((a, b) => f(b) - f(a))[0] || null;
+    const ageAt = p => p.birth ? ageOf(p.birth, `${parseInt(season)}-08-01`) : null;
+    const ov = C().awards?.[season] || {};
+    const pick = (k, auto) => ov[k] ? rows.find(x => x.pid === ov[k]) || { pid: ov[k], p: playerById(ov[k]), sc: 0 } : auto;
+    const res = {
+      mvp: pick('mvp', top(regular.length ? regular : rows, x => x.sc)),
+      scorer: pick('scorer', top(rows.filter(x => x.g), x => x.g * 1000 - x.min / 100)),
+      assist: pick('assist', top(rows.filter(x => x.a), x => x.a * 1000 - x.min / 100)),
+      young: pick('young', top(rows.filter(x => { const a = ageAt(x.p); return a != null && a <= 21; }), x => x.sc)),
+      gk: pick('gk', top(rows.filter(x => x.p.pos === 'GK'), x => x.cs * 10 + (x.avg || 0))),
+    };
+    const need = { GK: 1, DF: 4, MF: 3, FW: 3 }, xi = [];
+    for (const [pos, k] of Object.entries(need)) rows.filter(x => x.p.pos === pos).sort((a, b) => b.sc - a.sc).slice(0, k).forEach(x => xi.push(x));
+    res.xi = xi; res.matches = n; res.rec = teamRecord(ms);
+    return res;
+  },
+  LABELS: { mvp: ['🏆', '年間MVP'], scorer: ['⚽', '得点王'], assist: ['🎯', 'アシスト王'], young: ['🌟', '最優秀若手選手'], gk: ['🧤', '最優秀GK'] },
+  line(k, x) { if (!x) return '該当者なし'; return { scorer: `${x.g}ゴール`, assist: `${x.a}アシスト`, gk: `${x.cs ?? 0}クリーンシート` }[k] || `${x.apps ?? 0}試合 ${x.g ?? 0}G ${x.a ?? 0}A${x.avg ? ` 平均${x.avg.toFixed(2)}` : ''}`; },
+  article(season) {
+    const r = this.compute(season);
+    const body = [`${season}シーズンのクラブ表彰を発表します。`, '', ...Object.entries(this.LABELS).filter(([k]) => r[k]).map(([k, [i, l]]) => `## ${i} ${l}\n**${pname(r[k].pid)}**（${this.line(k, r[k])}）`), '', `## シーズンベストイレブン\n${r.xi.map(x => `- ${x.p.pos} ${x.p.name}`).join('\n')}`, '', `チーム成績: ${r.rec.w}勝${r.rec.d}分${r.rec.l}敗（得点${r.rec.gf} 失点${r.rec.ga}）`].join('\n');
+    return { title: `${season}シーズン クラブ表彰 — 年間MVPは${r.mvp ? pname(r.mvp.pid) : '—'}`, body };
+  },
+};/* boot when running as an exported standalone site */
 if (window.__SITE_DATA__) {
   DB = window.__SITE_DATA__.db; Object.assign(IMG, window.__SITE_DATA__.images || {});
   const run = () => Site.mount(document.body, location.hash.slice(1) || '/', { base: '#', preview: window.__SITE_DATA__.preview });
@@ -1152,9 +1243,9 @@ function newCareer(name = 'マイクラブ') {
   return {
     id: uid(), name, slug: 'my-club', ownTeamId: teamId, usage: 'game', currentSeason: season, currency: 'JPY',
     club: { founded: '', hometown: '', stadium: '', capacity: '', stadiumPhoto: '', description: '', sns: {} },
-    design: { scheme: 'dark', layout: 1, header: 'left', bg: 'navy', accent: '#c8102e', accent2: '', menu: { news: true, tv: true, club: true, transfers: true, matches: true, table: true, stats: true, squad: true, history: true } },
+    design: { scheme: 'dark', layout: 1, header: 'left', bg: 'navy', accent: '#c8102e', accent2: '', menu: { news: true, tv: true, club: true, transfers: true, matches: true, table: true, stats: true, squad: true, awards: true, history: true } },
     categories: [], teams: [{ id: teamId, name, short: '', logo: '', categoryId: '' }],
-    players: [], staff: [], competitions: [], matches: [], news: [], videos: [], trophies: [], transfers: [], bestXI: { formation: '4-3-3', slots: {} },
+    players: [], staff: [], competitions: [], matches: [], news: [], videos: [], trophies: [], transfers: [], bestXI: { formation: '4-3-3', slots: {} }, objectives: [], awards: {}, autoNews: { on: true, ai: false },
   };
 }
 
@@ -1180,6 +1271,7 @@ const Store = {
   commit(label, fn, opts = {}) {
     const before = this.snapshot();
     const r = fn(C(), DB);
+    if (typeof AutoNews !== 'undefined') AutoNews.scan(C());
     this.undo.push({ label, s: before }); if (this.undo.length > 60) this.undo.shift();
     this.redo = [];
     this.save();
@@ -1210,7 +1302,7 @@ const Store = {
     const o = JSON.parse(text);
     const keep = DB?.settings || {};
     DB = o.db;
-    DB.settings = { ...DB.settings, apiFootballKey: keep.apiFootballKey || '', anthropicKey: keep.anthropicKey || '', theme: keep.theme || DB.settings?.theme, model: keep.model || DB.settings?.model };
+    DB.settings = { ...DB.settings, apiFootballKey: keep.apiFootballKey || '', anthropicKey: keep.anthropicKey || '', geminiKey: keep.geminiKey || '', aiProvider: keep.aiProvider || DB.settings?.aiProvider, geminiModel: keep.geminiModel || DB.settings?.geminiModel, theme: keep.theme || DB.settings?.theme, model: keep.model || DB.settings?.model };
     for (const [id, v] of Object.entries(o.images || {})) if (IMG[id] !== v) { IMG[id] = v; await IDB.put('img', id, v); }
     this.migrate(); this.undo = []; this.redo = [];
     Sync.applying = true; await this.flush(); Sync.applying = false;
@@ -1222,11 +1314,11 @@ const Store = {
     const undoUsed = new Set(this.undo.flatMap(u => (u.s.match(/img:[a-z0-9]+/g) || []).map(s => s.slice(4))));
     for (const id of Object.keys(IMG)) if (!used.has(id) && !undoUsed.has(id)) { delete IMG[id]; await IDB.del('img', id); }
   },
-  exportJSON() { return JSON.stringify({ app: 'footchron-local', v: 1, exportedAt: new Date().toISOString(), db: { ...DB, settings: { ...DB.settings, apiFootballKey: '', anthropicKey: '' } }, images: IMG }); },
+  exportJSON() { return JSON.stringify({ app: 'footchron-local', v: 1, exportedAt: new Date().toISOString(), db: { ...DB, settings: { ...DB.settings, apiFootballKey: '', anthropicKey: '', geminiKey: '' } }, images: IMG }); },
   async importJSON(text) {
     const o = JSON.parse(text);
     if (o.app !== 'footchron-local') throw new Error('このアプリのバックアップファイルではありません');
-    const keep = { apiFootballKey: DB.settings.apiFootballKey, anthropicKey: DB.settings.anthropicKey };
+    const keep = { apiFootballKey: DB.settings.apiFootballKey, anthropicKey: DB.settings.anthropicKey, geminiKey: DB.settings.geminiKey };
     this.undo.push({ label: 'インポート', s: this.snapshot() });
     DB = o.db; DB.settings = { ...DB.settings, ...keep };
     for (const [id, v] of Object.entries(o.images || {})) { IMG[id] = v; await IDB.put('img', id, v); }
@@ -1513,7 +1605,7 @@ const Palette = {
   items() {
     const c = C(), out = [];
     NAV.flatMap(g => g.items).forEach(n => out.push({ group: 'ページ', label: n.label, icon: n.icon, kw: n.kw, run: () => go(n.path) }));
-    [['新しい試合を作成', () => Matches.create(), 'plus', 'match add'], ['選手を追加', () => Players.edit(), 'plus', 'player add'], ['ニュースを書く', () => News.edit(), 'plus', 'news'],
+    [['新しい試合を作成', () => Matches.create(), 'plus', 'match add'], ['選手を追加', () => Players.edit(), 'plus', 'player add'], ['ニュースを書く', () => News.edit(), 'plus', 'news'], ['次のシーズンへ', () => Season.next(), 'cal', 'season next 新シーズン'], ['能力値をスクショから記録', () => Ovr.shot(), 'sparkle', 'ovr pot 能力値'], ['シーズン表彰', () => go('/awards'), 'trophy', 'awards mvp'],
      ['大会を作成', () => Comps.edit(), 'plus', 'competition'], ['チームを追加', () => Teams.edit(), 'plus', 'team'], ['移籍を記録', () => Transfers.edit(), 'plus', 'transfer'],
      ['API-Footballから選手を取り込み', () => ApiImport.squadDialog(), 'cloud', 'api squad import'], ['API-Footballからチーム検索', () => ApiImport.teamDialog(), 'cloud', 'api team'],
      ['バックアップを書き出す (JSON)', () => Settings.backup(), 'download', 'export backup'], ['公開サイトをHTML書き出し', () => SiteExport.run(), 'download', 'export html'],
@@ -1532,18 +1624,30 @@ const Palette = {
 const AF = {
   base: 'https://v3.football.api-sports.io',
   TTL: 7 * 864e5,
-  key() { return DB.settings.apiFootballKey || ''; },
-  async get(path, params = {}, { fresh = false } = {}) {
-    if (!this.key()) { UI.toast('設定でAPI-FootballのAPIキーを入力してください', { err: true }); go('/settings'); throw new Error('no key'); }
-    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString();
-    const url = `${this.base}${path}${qs ? '?' + qs : ''}`;
-    if (!fresh) { const c = await IDB.get('cache', url); if (c && Date.now() - c.t < this.TTL) return c.data; }
-    const r = await fetch(url, { headers: { 'x-apisports-key': this.key() } });
-    if (!r.ok) throw new Error(`API-Football: HTTP ${r.status}`);
-    const j = await r.json();
+  key() { return (DB.settings.apiFootballKey || '').trim(); },
+  // api-sports.io dashboard keys are 32 hex chars; longer keys come from RapidAPI and need its host + headers
+  rapid() { return this.key().length > 40; },
+  /** raw request; returns parsed JSON. API-Football answers bad/missing keys with a 403 that has no CORS header,
+   *  so the browser only reports "Failed to fetch" — translate that into something actionable. */
+  async raw(path, qs) {
+    const url = this.rapid() ? `https://api-football-v1.p.rapidapi.com/v3${path}${qs}` : `${this.base}${path}${qs}`;
+    const headers = this.rapid() ? { 'x-rapidapi-key': this.key(), 'x-rapidapi-host': 'api-football-v1.p.rapidapi.com' } : { 'x-apisports-key': this.key() };
+    let r;
+    try { r = await fetch(url, { headers }); }
+    catch { throw new Error('API-Footballに接続できません。APIキーが正しいか（コピー時の空白・欠け）を確認してください。オフラインの可能性もあります'); }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok && !j.errors) throw new Error(r.status === 403 && this.rapid() ? 'RapidAPIでAPI-Footballを購読していないか、キーが無効です' : `API-Football: HTTP ${r.status}`);
     const errs = j.errors && (Array.isArray(j.errors) ? j.errors : Object.values(j.errors));
-    if (errs && errs.length) throw new Error('API-Football: ' + errs.join(' / '));
-    await IDB.put('cache', url, { t: Date.now(), data: j.response });
+    if (errs && errs.length) throw new Error('API-Football: ' + errs.join(' / ').replace('Invalid API key, please check your request and credentials.', 'APIキーが正しくありません').replace(/(Error\/)?Missing application key.*/,'APIキーが正しくありません（dashboard.api-football.com の My Access にあるキーを貼ってください）').replace(/You have reached the request limit for the day.*/, '今日のリクエスト上限（無料100回）に達しました。明日また使えます'));
+    return j;
+  },
+  async get(path, params = {}, { fresh = false } = {}) {
+    if (!this.key()) { UI.toast('設定でAPI-FootballのAPIキーを入力してください', { err: true }); go('/settings'); throw new Error('APIキーが未設定です'); }
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString();
+    const ck = `${this.base}${path}${qs ? '?' + qs : ''}`;
+    if (!fresh) { const c = await IDB.get('cache', ck); if (c && Date.now() - c.t < this.TTL) return c.data; }
+    const j = await this.raw(path, qs ? '?' + qs : '');
+    await IDB.put('cache', ck, { t: Date.now(), data: j.response });
     DB.settings.afUsed = (DB.settings.afUsedDay === today() ? DB.settings.afUsed || 0 : 0) + 1; DB.settings.afUsedDay = today(); Store.save();
     return j.response;
   },
@@ -1555,8 +1659,7 @@ const AF = {
   async teamPlayers(team, season) {
     const out = []; let page = 1, total = 1;
     while (page <= total && page <= 5) {
-      const r = await fetch(`${this.base}/players?team=${team}&season=${season}&page=${page}`, { headers: { 'x-apisports-key': this.key() } }).then(r => r.json());
-      if (r.errors && Object.values(r.errors).length) throw new Error('API-Football: ' + Object.values(r.errors).join(' / '));
+      const r = await this.raw('/players', `?team=${team}&season=${season}&page=${page}`);
       out.push(...r.response); total = r.paging?.total || 1; page++;
     }
     return out;
@@ -1567,7 +1670,44 @@ const AF = {
 const NAT_JA = { Japan: '日本', England: 'イングランド', Spain: 'スペイン', France: 'フランス', Germany: 'ドイツ', Italy: 'イタリア', Brazil: 'ブラジル', Argentina: 'アルゼンチン', Portugal: 'ポルトガル', Netherlands: 'オランダ', Belgium: 'ベルギー', Wales: 'ウェールズ', Scotland: 'スコットランド', Ireland: 'アイルランド', 'Northern Ireland': '北アイルランド', Uruguay: 'ウルグアイ', Colombia: 'コロンビア', Croatia: 'クロアチア', Serbia: 'セルビア', Denmark: 'デンマーク', Norway: 'ノルウェー', Sweden: 'スウェーデン', Poland: 'ポーランド', Switzerland: 'スイス', Austria: 'オーストリア', 'Korea Republic': '韓国', 'South Korea': '韓国', USA: 'アメリカ', 'United States': 'アメリカ', Mexico: 'メキシコ', Nigeria: 'ナイジェリア', Ghana: 'ガーナ', Senegal: 'セネガル', Morocco: 'モロッコ', Egypt: 'エジプト', "Côte d'Ivoire": 'コートジボワール', Cameroon: 'カメルーン', Algeria: 'アルジェリア', Turkey: 'トルコ', 'Türkiye': 'トルコ', Ukraine: 'ウクライナ', Czechia: 'チェコ', 'Czech Republic': 'チェコ', Australia: 'オーストラリア', Canada: 'カナダ', Ecuador: 'エクアドル', Chile: 'チリ', Paraguay: 'パラグアイ', Peru: 'ペルー', Venezuela: 'ベネズエラ', Greece: 'ギリシャ', Hungary: 'ハンガリー', Slovakia: 'スロバキア', Slovenia: 'スロベニア', Mali: 'マリ', Guinea: 'ギニア', 'Bosnia and Herzegovina': 'ボスニア・ヘルツェゴビナ', Albania: 'アルバニア', Kosovo: 'コソボ', Georgia: 'ジョージア', Iceland: 'アイスランド', Finland: 'フィンランド', Jamaica: 'ジャマイカ' };
 const natJa = n => NAT_JA[n] || n || '';
 
+const venueOf = r => r.venue?.name ? { name: r.venue.name, city: r.venue.city || '', capacity: r.venue.capacity || '', image: r.venue.image || '' } : null;
+const asciiName = n => String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const ApiImport = {
+  /** find crests (+ stadium) for every registered team that has none */
+  async bulkLogos() {
+    const targets = C().teams.filter(t => !t.logo);
+    if (!targets.length) return UI.toast('すべてのチームにエンブレムが設定されています');
+    if (!AF.key()) return AF.get('/status');
+    const used = DB.settings.afUsedDay === today() ? DB.settings.afUsed || 0 : 0;
+    const m = UI.modal({ title: 'エンブレムを一括取得', cls: 'wide', body: `<div class="notice">エンブレム未設定の ${targets.length} チームを API-Football で検索します（1チーム1回・今日の使用 ${used}/100）。候補が違うときは右の選択で変えられます。</div><div class="card flush" data-out></div>`, foot: '<span class="grow hint" data-prog></span><button class="btn ghost" data-c>閉じる</button><button class="btn primary" data-go disabled>チェックしたエンブレムを設定</button>' });
+    m.$('[data-c]').onclick = () => m.close();
+    const rows = [];
+    const draw = () => { m.$('[data-out]').innerHTML = `<div class="list">${rows.map((r, i) => { const sel = r.results[r.pick]; return `<div class="li" style="cursor:default"><input type="checkbox" data-ok="${i}" ${sel ? 'checked' : 'disabled'}>${crest(r.t)}<div class="grow"><div class="t">${esc(r.t.name)}</div><div class="s">${r.note || (sel ? esc(sel.team.name + (sel.team.country ? ' ・ ' + sel.team.country : '') + (sel.venue?.name ? ' ・ ' + sel.venue.name : '')) : '')}</div></div>${sel ? `<img class="crest md" src="${esc(sel.team.logo)}">` : ''}${r.results.length > 1 ? `<select class="input sm" style="width:auto;max-width:180px" data-pick="${i}">${r.results.slice(0, 10).map((x, j) => opt(j, x.team.name + (x.team.country ? ' (' + x.team.country + ')' : ''), r.pick)).join('')}</select>` : ''}</div>`; }).join('')}</div>`; };
+    m.$('[data-out]').addEventListener('change', e => { const s = e.target.closest('[data-pick]'); if (s) { rows[+s.dataset.pick].pick = +s.value; draw(); } });
+    for (const t of targets) {
+      if (!m.el.isConnected) return;
+      m.$('[data-prog]').textContent = `検索中… ${rows.length + 1}/${targets.length}`;
+      const q = asciiName(t.name).replace(/^(FC|AFC|CF|SC|AC) /i, '');
+      const row = { t, results: [], pick: 0 };
+      if (q.length < 3) row.note = '英語表記の名前で登録すると検索できます';
+      else {
+        try {
+          row.results = await AF.searchTeams(q);
+          const n = normName(t.name), i = row.results.findIndex(x => normName(x.team.name) === n);
+          row.pick = i >= 0 ? i : Math.max(0, row.results.findIndex(x => !x.team.national));
+          if (!row.results.length) row.note = '見つかりませんでした';
+        } catch (e) { row.note = e.message; rows.push(row); draw(); if (/上限/.test(e.message)) break; continue; }
+      }
+      rows.push(row); draw();
+    }
+    m.$('[data-prog]').textContent = `${rows.filter(r => r.results.length).length}/${targets.length} チームで候補が見つかりました`;
+    m.$('[data-go]').disabled = false;
+    m.$('[data-go]').onclick = () => {
+      const ok = $$('[data-ok]:checked', m.el).map(c => rows[+c.dataset.ok]);
+      Store.commit(`エンブレム一括設定(${ok.length})`, () => ok.forEach(r => { const x = r.results[r.pick]; Object.assign(r.t, { logo: x.team.logo, apiId: x.team.id, country: x.team.country || r.t.country || '', venue: venueOf(x) || r.t.venue || null }); }), { toast: `${ok.length}チームのエンブレムを設定しました` });
+      m.close();
+    };
+  },
   /** search a team on API-Football; onPick(team, venue) */
   teamDialog(onPick) {
     const m = UI.modal({
@@ -1608,7 +1748,7 @@ const ApiImport = {
     m.$('[data-add]').onclick = () => {
       const picked = $$('[data-i]:checked', m.el).map(c => results[+c.dataset.i]);
       if (!picked.length) return UI.toast('チームを選択してください');
-      const ids = Store.commit(`APIからチーム${picked.length}件登録`, c => picked.map(r => { const t = { id: uid(), name: r.team.name, short: r.team.code || '', logo: r.team.logo, apiId: r.team.id, categoryId: '', country: r.team.country }; c.teams.push(t); return t.id; }));
+      const ids = Store.commit(`APIからチーム${picked.length}件登録`, c => picked.map(r => { const t = { id: uid(), name: r.team.name, short: r.team.code || '', logo: r.team.logo, apiId: r.team.id, categoryId: '', country: r.team.country, venue: venueOf(r) }; c.teams.push(t); return t.id; }));
       UI.toast(`${picked.length}チームを登録しました`, { undo: true }); m.close(); ApiImport.lastAdded = ids;
     };
   },
@@ -1651,22 +1791,54 @@ const ApiImport = {
   },
 };
 
-/* ===== Claude API (browser direct access, user's own key) ===== */
+/* ===== AI: Google Gemini (free tier) or Claude, called directly from the browser with the user's own key =====
+ * content parts: { text } | { image: { mime, data(base64) } } */
 const AI = {
-  async call(content, { system, maxTokens = 16000 } = {}) {
-    const key = DB.settings.anthropicKey;
-    if (!key) { UI.toast('設定でAnthropic APIキーを入力してください', { err: true }); go('/settings'); throw new Error('no key'); }
+  provider() { const s = DB.settings; return s.aiProvider || (s.geminiKey ? 'gemini' : s.anthropicKey ? 'claude' : 'gemini'); },
+  ready() { return this.provider() === 'gemini' ? !!DB.settings.geminiKey : !!DB.settings.anthropicKey; },
+  need() { if (this.ready()) return; UI.toast('AIを使うには設定でGemini（無料）かClaudeのAPIキーを入力してください', { err: true, ms: 5000 }); go('/settings'); throw new Error('AIキーが未設定です'); },
+  async call(content, { system, maxTokens = 8000, json = false } = {}) {
+    this.need();
+    const parts = typeof content === 'string' ? [{ text: content }] : content;
+    return this.provider() === 'gemini' ? this.gemini(parts, { system, maxTokens, json }) : this.claude(parts, { system, maxTokens });
+  },
+  async gemini(parts, { system, maxTokens, json }) {
+    const model = DB.settings.geminiModel || 'gemini-2.5-flash';
+    const body = { contents: [{ role: 'user', parts: parts.map(p => p.image ? { inline_data: { mime_type: p.image.mime, data: p.image.data } } : { text: p.text }) }], generationConfig: { maxOutputTokens: maxTokens, ...(json ? { responseMimeType: 'application/json' } : {}) } };
+    if (system) body.systemInstruction = { parts: [{ text: system }] };
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': DB.settings.geminiKey.trim() }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const msg = j.error?.message || `HTTP ${r.status}`;
+      throw new Error(/API key not valid/i.test(msg) ? 'Gemini APIキーが正しくありません' : r.status === 429 ? '無料枠の上限に達しました。少し時間をおくか、明日また試してください' : r.status === 404 ? `Geminiのモデル「${model}」が見つかりません。設定でモデル名を確認してください` : 'Gemini: ' + msg);
+    }
+    const c = j.candidates?.[0];
+    if (!c) throw new Error('AIが応答しませんでした' + (j.promptFeedback?.blockReason ? `（${j.promptFeedback.blockReason}）` : ''));
+    return (c.content?.parts || []).map(p => p.text || '').join('');
+  },
+  async claude(parts, { system, maxTokens }) {
     const model = DB.settings.model || 'claude-opus-5';
+    const content = parts.map(p => p.image ? { type: 'image', source: { type: 'base64', media_type: p.image.mime, data: p.image.data } } : { type: 'text', text: p.text });
     const body = { model, max_tokens: maxTokens, messages: [{ role: 'user', content }], output_config: { effort: 'medium' } };
     if (system) body.system = system;
-    const headers = { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
+    const headers = { 'content-type': 'application/json', 'x-api-key': DB.settings.anthropicKey.trim(), 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
     if (/^claude-(opus-5$|fable-5-1)/.test(model)) { body.fallbacks = 'default'; headers['anthropic-beta'] = 'server-side-fallback-2026-07-01'; }
     const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers, body: JSON.stringify(body) });
     const j = await r.json();
-    if (!r.ok) throw new Error(j.error?.message || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(r.status === 401 ? 'Anthropic APIキーが正しくありません' : r.status === 402 || /credit/i.test(j.error?.message || '') ? 'Anthropicのクレジット残高が不足しています' : r.status === 429 ? 'AIの利用が混み合っています。少し待ってから再試行してください' : (j.error?.message || `HTTP ${r.status}`));
     if (j.stop_reason === 'refusal') throw new Error('AIが生成を辞退しました' + (j.stop_details?.explanation ? `: ${j.stop_details.explanation}` : ''));
     return j.content.filter(b => b.type === 'text').map(b => b.text).join('');
   },
+  async img(file) { const d = await fileToDataURL(file, 1800, .9); const [meta, data] = d.split(','); return { image: { mime: meta.match(/data:(.*);/)[1], data } }; },
+  /** ask for JSON about one or more screenshots */
+  async readJSON(files, prompt) {
+    const imgs = await Promise.all([...files].map(f => this.img(f)));
+    const t = await this.call([...imgs, { text: prompt + '\n説明文は不要、JSONのみを返してください。' }], { maxTokens: 8000, json: true });
+    const a = t.indexOf('{'), b = t.lastIndexOf('}');
+    if (a < 0) throw new Error('読み取り結果を解釈できませんでした');
+    return JSON.parse(t.slice(a, b + 1));
+  },
+  squadList(season) { return playersOf(season).map(p => `${p.number ?? ''} ${p.name}${p.sub ? ' / ' + p.sub : ''}`).join('\n'); },
   matchFacts(m) {
     const c = C(), [gf, ga] = gfga(m), evs = (m.events || []).slice().sort(by(e => num(e.minute)));
     const lu = m.lineup || {};
@@ -1691,18 +1863,46 @@ const AI = {
     const [title, ...rest] = t.trim().split('\n');
     return { title: title.replace(/^#+\s*/, '').trim(), body: rest.join('\n').trim() };
   },
-  async readScreenshot(file, m) {
-    const data = await fileToDataURL(file, 1600, .9);
-    const [meta, b64] = data.split(',');
-    const players = playersOf(m.season).map(p => `${p.id}:${p.number ?? ''} ${p.name}`).join('\n');
-    const prompt = `これはサッカーゲーム（FC/eFootball等）または試合中継の試合結果画面のスクリーンショットです。読み取れる情報だけをJSONで返してください。説明文は不要、JSONのみ。
-{"homeScore":数値|null,"awayScore":数値|null,"stats":{"possession":[ホーム,アウェイ],"shots":[..],"sot":[..],"xg":[..],"passes":[..],"passAcc":[..],"tackles":[..],"corners":[..],"fouls":[..],"offsides":[..],"saves":[..]},"events":[{"minute":数値,"type":"goal|pen|og|yellow|red","side":"home|away","player":"名前","assist":"名前|null"}]}
-読み取れない項目は省略。自チームの選手名は次のリストに近いものがあればそのリストの表記に合わせる:\n${players}`;
-    const t = await this.call([{ type: 'image', source: { type: 'base64', media_type: meta.match(/data:(.*);/)[1], data: b64 } }, { type: 'text', text: prompt }], { maxTokens: 4000 });
-    const js = t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1);
-    return JSON.parse(js);
+  /** EA SPORTS FC post-match screens: result/summary, match facts, player ratings (any subset, any order) */
+  readMatch(files, m) {
+    return this.readJSON(files, `これらはサッカーゲーム「EA SPORTS FC」キャリアモードの試合後画面のスクリーンショットです（試合結果・タイムライン、スタッツ、選手評価のいずれか/複数）。
+ホーム: ${teamName(m.homeId)} / アウェイ: ${teamName(m.awayId)}。自チームは ${teamName(own())}。
+読み取れた情報だけを次の形のJSONで返してください。読み取れない項目は省略。
+{"homeScore":数値,"awayScore":数値,"pk":{"home":数値,"away":数値}|null,
+ "stats":{"possession":[ホーム,アウェイ],"shots":[..],"sot":[..],"xg":[..],"passes":[..],"passAcc":[..],"tackles":[..],"corners":[..],"fouls":[..],"offsides":[..],"saves":[..]},
+ "events":[{"minute":数値,"type":"goal|pen|og|yellow|red|sub","side":"home|away","player":"名前","assist":"名前|null","in":"交代で入った選手|null","out":"交代で出た選手|null"}],
+ "ratings":[{"player":"自チームの選手名","rating":数値,"position":"GK等|null","sub":true|false}],
+ "motm":"選手名|null"}
+選手評価は自チームの選手のみ。自チームの選手名は、次の登録リストに近いものがあればそのリストの表記に合わせてください:\n${this.squadList(m.season)}`);
+  },
+  readTable(files, comp) {
+    return this.readJSON(files, `これはサッカーゲーム「EA SPORTS FC」の順位表のスクリーンショットです。全チームの成績をJSONで返してください。
+{"rows":[{"team":"チーム名","p":試合数,"w":勝,"d":分,"l":敗,"gf":得点,"ga":失点,"pts":勝点}]}
+チーム名は次の登録名に近いものがあればその表記に合わせてください:\n${(comp.teamIds || []).map(teamName).join('\n')}`);
+  },
+  readSquad(files) {
+    return this.readJSON(files, `これはサッカーゲーム「EA SPORTS FC」キャリアモードのスカッド/選手一覧画面のスクリーンショットです。表示されている全選手をJSONで返してください。
+{"players":[{"name":"選手名","ovr":総合値,"pot":ポテンシャル|null,"age":年齢|null,"pos":"ST等|null","number":背番号|null}]}
+ポテンシャルが「78-84」のような幅なら大きい方。選手名は次の登録リストに近いものがあればその表記に合わせてください:\n${this.squadList(curSeason())}`);
+  },
+  async polish(title, body) {
+    const t = await this.call(`次のサッカークラブ公式サイトの記事を、事実（数字・名前）は変えずに、読みやすく少し熱のある公式広報の文体に整えてください。1行目にタイトル、2行目は空行、3行目以降に本文（Markdown可）。\n\n${title}\n\n${body}`, { maxTokens: 3000 });
+    const [tt, ...rest] = t.trim().split('\n');
+    return { title: tt.replace(/^#+\s*/, '').trim(), body: rest.join('\n').trim() };
   },
 };
+/* fuzzy name → id matching for AI results */
+const normName = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9぀-ヿ一-鿿]/g, '');
+function matchPlayer(name, season) {
+  if (!name) return null;
+  const n = normName(name), ps = playersOf(season).length ? playersOf(season) : C().players;
+  return (ps.find(p => normName(p.name) === n) || ps.find(p => normName(p.sub) === n)
+    || ps.find(p => { const a = normName(p.name), last = normName(String(p.name).split(/\s+/).pop()); return (a.length > 2 && (a.includes(n) || n.includes(a))) || (last.length > 2 && n.includes(last)); }))?.id || null;
+}
+function matchTeam(name, ids) {
+  const n = normName(name), ts = ids.map(teamById).filter(Boolean);
+  return (ts.find(t => normName(t.name) === n) || ts.find(t => { const a = normName(t.name); return a.length > 2 && (a.includes(n) || n.includes(a)); }) || ts.find(t => normName(t.short) === n))?.id || null;
+}
 
 /* ===== app shell: navigation, router, keyboard, dashboard, settings ===== */
 const NAV = [
@@ -1724,6 +1924,7 @@ const NAV = [
     { path: '/history', label: 'クラブ史', icon: 'history', kw: 'history records best eleven' },
     { path: '/trophies', label: 'トロフィールーム', icon: 'star', kw: 'trophy title 優勝' },
     { path: '/transfers', label: '移籍管理', icon: 'swap', kw: 'transfer in out 移籍金' },
+    { path: '/awards', label: 'シーズン表彰', icon: 'trophy', kw: 'awards mvp 表彰 授賞式 ベストイレブン' },
     { path: '/booklet', label: '選手名鑑', icon: 'book', kw: 'booklet print 名鑑 印刷' },
   ] },
   { h: 'アカウント', items: [{ path: '/settings', label: '設定・データ', icon: 'gear', kw: 'settings api key backup career キャリア' }] },
@@ -1855,14 +2056,18 @@ route(/^\/$/, () => {
   const league = c.competitions.find(x => x.season === s && x.format !== 'cup' && (x.teamIds || []).includes(own()));
   const todo = [];
   if (!teamById(own())?.logo) todo.push(['クラブのエンブレムを設定', '/teams', 'API-Footballから取得できます']);
+  const noLogo = c.teams.filter(t => !t.logo && t.id !== own()).length;
+  if (noLogo && DB.settings.apiFootballKey) todo.push([`エンブレム未設定のチームが ${noLogo} 件あります`, '/teams', '「エンブレムを一括取得」でまとめて入ります']);
   if (!playersOf().length) todo.push(['選手を登録（API取り込み / CSV / 手入力）', '/players', '']);
   if (!c.competitions.some(x => x.season === s)) todo.push(['今シーズンの大会を作成', '/competitions', 'リーグ戦なら日程も自動生成できます']);
   const pend = ms.filter(m => !isDone(m) && m.date && m.date < today());
-  if (pend.length) todo.push([`結果未入力の試合が ${pend.length} 件あります`, '/matches?f=pending', '']);
+  if (pend.length) todo.push([`結果未入力の試合が ${pend.length} 件あります`, '/matches?f=pending', '試合後スクショを入れるだけで入力できます']);
+  const over = Season.isOver(s);
   return {
     title: 'ダッシュボード',
     html: `<div class="ph"><div><h1>${esc(c.name)}</h1><p>${esc(s)} シーズン ・ ${esc(teamName(own()))}</p></div>
       <div class="actions hide-sm"><button class="btn" data-act="newMatch">${ic('plus')}試合</button><button class="btn" data-act="newPlayer">${ic('plus')}選手</button><button class="btn" data-act="newNews">${ic('plus')}ニュース</button><a class="btn primary" href="#/site">${ic('eye')}HPを見る</a></div></div>
+      ${over ? `<div class="card" style="margin-bottom:14px;border-color:var(--gold);background:linear-gradient(135deg,color-mix(in srgb,var(--gold) 12%,var(--panel)),var(--panel))"><h3>🏆 ${esc(s)} シーズン終了！</h3><div class="small muted" style="margin-bottom:10px">${rec.w}勝${rec.d}分${rec.l}敗 ・ 得点${rec.gf} 失点${rec.ga}${league ? ` ・ ${esc(league.name)} ${standings(league).find(r => r.id === own())?.rank ?? '-'}位` : ''}</div><div class="row"><a class="btn" href="#/awards">シーズン表彰を見る</a><button class="btn primary" data-act="nextSeason">次のシーズンへ →</button></div></div>` : ''}
       ${todo.length ? `<div class="card" style="margin-bottom:14px"><h3>${ic('bolt')}次にやること</h3><div class="list">${todo.map(([t, p, h]) => `<a class="li" href="#${p}"><div class="grow"><div class="t">${esc(t)}</div>${h ? `<div class="s">${esc(h)}</div>` : ''}</div>${ic('chevR')}</a>`).join('')}</div></div>` : ''}
       <div class="grid g4" style="margin-bottom:14px">
         ${[['試合', rec.p], ['勝-分-敗', `${rec.w}-${rec.d}-${rec.l}`], ['得点 / 失点', `${rec.gf} / ${rec.ga}`], ['勝率', rec.wr + '%']].map(([k, v]) => `<div class="card stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}
@@ -1874,6 +2079,8 @@ route(/^\/$/, () => {
           ${league ? `<div class="card flush"><h3 style="padding:16px 16px 4px">${esc(league.name)} 順位表<a class="more" href="#/competitions/${league.id}">詳細 →</a></h3>${tableHTML(league, { compact: true })}</div>` : ''}
         </div>
         <div class="stack">
+          ${Objectives.card()}
+          ${Contracts.card()}
           <div class="card"><h3>得点ランキング</h3>${rankList(top('g'), 'g', 'G')}</div>
           <div class="card"><h3>アシストランキング</h3>${rankList(top('a'), 'a', 'A')}</div>
           <div class="card"><h3>フォーム</h3><div class="row" style="gap:4px">${done.slice(-10).map(m => `<span class="res ${resultOf(m)}" title="${esc(teamName(oppOf(m)))} ${m.hs}-${m.as}">${resultOf(m)}</span>`).join('') || '<span class="muted small">—</span>'}</div></div>
@@ -1887,7 +2094,9 @@ Actions.newMatch = () => Matches.create();
 Actions.quickAdd = () => {
   const pend = matchesFor({ season: curSeason() }).find(m => !isDone(m));
   const items = [
-    pend && ['cal', '次の試合を入力', `${fmtDate(pend.date)} vs ${teamName(oppOf(pend))}`, () => go('/matches/' + pend.id)],
+    pend && ['sparkle', 'スクショで試合入力', `${fmtDate(pend.date)} vs ${teamName(oppOf(pend))}`, () => { go('/matches/' + pend.id); setTimeout(() => ShotReader.open(matchById(pend.id)), 120); }],
+    pend && ['cal', '次の試合を手入力', `${fmtDate(pend.date)} vs ${teamName(oppOf(pend))}`, () => go('/matches/' + pend.id)],
+    ['chart', '能力値を記録', 'OVR/POT（スクショ可）', () => go('/players?tab=ovr')],
     ['plus', '試合を作成', '公式戦・親善試合', () => Matches.create()],
     ['users', '選手を追加', '手入力', () => Players.edit()],
     ['cloud', '選手を取り込み', 'API-Football', () => ApiImport.squadDialog()],
@@ -1962,10 +2171,19 @@ route(/^\/settings$/, () => {
         <div class="hint">エンブレム・チーム名・選手名・選手写真の取り込みに使います。無料プランは100リクエスト/日。取得結果は7日間キャッシュされます。今日の使用: ${s.afUsedDay === today() ? s.afUsed || 0 : 0} 回</div>
         <div class="row"><button class="btn sm" data-act="afTest">接続テスト</button><button class="btn sm ghost" data-act="clearCache">キャッシュを削除</button></div>
       </div>
-      <div class="card stack"><h3>${ic('sparkle')}AI（Claude）</h3>
-        <div class="field"><label>Anthropic APIキー</label><input class="input" type="password" value="${esc(s.anthropicKey || '')}" data-setting="anthropicKey" placeholder="sk-ant-..."></div>
-        <div class="field"><label>モデル</label><select class="input" data-setting="model">${opts([['claude-opus-5', 'Claude Opus 5（推奨）'], ['claude-sonnet-5', 'Claude Sonnet 5（安価・高速）'], ['claude-haiku-4-5', 'Claude Haiku 4.5（最安）']], s.model || 'claude-opus-5')}</select></div>
-        <div class="hint">試合記事のAI生成、試合結果スクリーンショットからのスタッツ読み取りに使います。キーはこのブラウザ内にのみ保存され、バックアップには含まれません。</div>
+      <div class="card stack"><h3>${ic('sparkle')}AI（スクショ読み取り・記事）</h3>
+        <div class="field"><label>使うAI</label><div class="seg accent">${[['gemini', 'Gemini（無料枠）'], ['claude', 'Claude（有料）']].map(([v, l]) => `<button class="${AI.provider() === v ? 'on' : ''}" data-act="aiProv" data-v="${v}">${l}</button>`).join('')}</div></div>
+        ${AI.provider() === 'gemini' ? `<div class="field"><label>Gemini APIキー <a class="btn xs primary" href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="margin-left:6px">無料で取得</a></label><input class="input" type="password" value="${esc(s.geminiKey || '')}" data-setting="geminiKey" placeholder="AIza..."></div>
+        <div class="field"><label>モデル</label><input class="input" value="${esc(s.geminiModel || 'gemini-2.5-flash')}" data-setting="geminiModel"></div>
+        <div class="hint">Googleアカウントでログイン →「APIキーを作成」→ コピーして貼るだけ。カード登録不要の無料枠で動きます（1日の回数に上限あり）。</div>`
+        : `<div class="field"><label>Anthropic APIキー</label><input class="input" type="password" value="${esc(s.anthropicKey || '')}" data-setting="anthropicKey" placeholder="sk-ant-..."></div>
+        <div class="field"><label>モデル</label><select class="input" data-setting="model">${opts([['claude-opus-5', 'Claude Opus 5（推奨）'], ['claude-sonnet-5', 'Claude Sonnet 5（安価・高速）'], ['claude-haiku-4-5', 'Claude Haiku 4.5（最安）']], s.model || 'claude-opus-5')}</select></div>`}
+        <div class="row"><button class="btn sm" data-act="aiTest">接続テスト</button></div>
+        <div class="sep" style="margin:4px 0"></div>
+        <div class="lbl">自動ニュース</div>
+        <label class="row small" style="gap:8px"><input type="checkbox" data-act-change="autoNews" ${C().autoNews?.on !== false ? 'checked' : ''}>試合が終わったら試合レポートと記録達成（ハットトリック・通算○試合・連勝など）の記事を自動で公開（無料）</label>
+        <label class="row small" style="gap:8px"><input type="checkbox" data-act-change="autoNewsAI" ${C().autoNews?.ai ? 'checked' : ''}>自動の試合レポートをAIで読みやすい文章に整える（AIキーが必要）</label>
+        <div class="hint">キーはこの端末内にのみ保存され、バックアップやクラウド同期のデータには含まれません。</div>
       </div>
       <div class="card stack"><h3>${ic('swap')}キャリア（セーブデータ）</h3>
         <div class="list">${DB.careers.map(k => `<div class="li" style="cursor:default">${crest(k.teams.find(t => t.id === k.ownTeamId))}<div class="grow"><div class="t">${esc(k.name)} ${k.id === DB.currentCareerId ? '<span class="chip green">使用中</span>' : ''}</div><div class="s">${k.players.length}選手 ・ ${k.matches.length}試合 ・ ${k.news.length}記事</div></div>
@@ -2021,6 +2239,16 @@ const Onboard = {
     });
   },
 };
+
+Object.assign(Actions, {
+  aiProv: a => { DB.settings.aiProvider = a.dataset.v; Store.save(); App.render(); },
+  aiTest: async a => { a.disabled = true; try { const t = await AI.call('「OK」とだけ返してください', { maxTokens: 50 }); UI.toast('AIに接続できました: ' + t.trim().slice(0, 20)); } catch (e) { UI.toast(e.message, { err: true, ms: 6000 }); } a.disabled = false; },
+});
+document.addEventListener('change', e => {
+  const k = e.target.dataset.actChange;
+  if (k === 'autoNews') Store.commit('自動ニュース設定', c => AutoNews.cfg(c).on = e.target.checked, { render: false, toast: e.target.checked ? '自動ニュースON' : '自動ニュースOFF' });
+  if (k === 'autoNewsAI') Store.commit('自動ニュース設定', c => AutoNews.cfg(c).ai = e.target.checked, { render: false });
+});
 
 /* ===== teams & players & staff ===== */
 const Teams = {
@@ -2078,7 +2306,7 @@ route(/^\/teams$/, () => {
   return {
     title: 'チーム登録',
     html: `<div class="ph"><div><h1>チーム登録</h1><p>自チームと対戦相手。カテゴリで分類できます。</p></div><div class="actions">
-      <button class="btn" data-act="teamCats">カテゴリ作成/管理</button><button class="btn" data-act="afTeams">${ic('cloud')}API-Footballから一括登録</button><button class="btn primary" data-act="newTeam" data-new>${ic('plus')}新規チーム</button></div></div>
+      <button class="btn" data-act="teamCats">カテゴリ作成/管理</button><button class="btn" data-act="afTeams">${ic('cloud')}API-Footballから一括登録</button><button class="btn" data-act="bulkLogos">${ic('shield')}エンブレムを一括取得</button><button class="btn primary" data-act="newTeam" data-new>${ic('plus')}新規チーム</button></div></div>
       <div class="row" style="margin-bottom:12px"><input class="input" data-search placeholder="チームを検索…  ( / )" style="max-width:280px">
         <div class="seg"><button class="${!cat ? 'on' : ''}" data-act="teamCat" data-v="">すべて <span class="faint">${c.teams.length}</span></button>${c.categories.map(k => `<button class="${cat === k.id ? 'on' : ''}" data-act="teamCat" data-v="${k.id}">${esc(k.name)}</button>`).join('')}${c.categories.length ? `<button class="${cat === '__none' ? 'on' : ''}" data-act="teamCat" data-v="__none">未分類</button>` : ''}</div></div>
       ${ts.length ? `<div class="quick" data-teams>${ts.map(t => `<a href="javascript:" data-act="editTeam" data-id="${t.id}" data-name="${esc(t.name.toLowerCase())}" style="align-items:center;text-align:center">${crest(t, 'lg')}<b class="ell" style="max-width:100%">${esc(t.name)}</b><small>${t.id === own() ? '<span class="chip green">自チーム</span>' : `${cnt(t.id)}試合`}${t.categoryId ? ' ・ ' + esc(c.categories.find(k => k.id === t.categoryId)?.name || '') : ''}</small></a>`).join('')}</div>` : '<div class="card empty"><b>チームがありません</b>対戦相手を登録しましょう</div>'}`,
@@ -2089,6 +2317,7 @@ Object.assign(Actions, {
   teamCats: () => Teams.categories(), newTeam: () => Teams.edit(), editTeam: a => Teams.edit(a.dataset.id),
   teamCat: a => go('/teams' + (a.dataset.v ? '?cat=' + a.dataset.v : '')),
   afTeams: () => ApiImport.teamDialog(),
+  bulkLogos: () => ApiImport.bulkLogos(),
 });
 
 /* ---------------- players ---------------- */
@@ -2130,6 +2359,7 @@ const Players = {
             ...SNS.map(([k, l, ph]) => ({ k: 'sns.' + k, label: l, ph, type: 'url' })),
           ] },
           { label: 'パラメーター', fields: [
+            { type: 'html', html: v => Ovr.chart(v) ? `<div class="lbl">OVR / POT の推移（緑=OVR・灰=POT）</div>${Ovr.chart(v)}` : '<div class="hint">「選手管理 → 能力値」でシーズンごとのOVR/POTを記録すると、ここに成長グラフが出ます。</div>' },
             { k: 'params.show', label: 'HPでパラメーターを表示', type: 'toggle' },
             { k: 'params.overall', label: '総合値', type: 'number', ph: '未入力なら自動計算（平均）' },
             { type: 'html', html: `<div data-radar>${Chart.radar(p.params.items)}</div>` },
@@ -2138,6 +2368,7 @@ const Players = {
           { label: '成績', fields: [
             { type: 'html', html: `<div class="notice">公開ページには手入力の数値が優先されます。試合イベントからの自動集計は続いており、行をすべて消せば自動集計に戻ります。</div>
               <div class="card" style="margin-top:10px"><div class="lbl">自動集計（${esc(season)}）</div><div class="row" style="gap:18px;margin-top:6px">${[['試合', auto?.apps], ['先発', auto?.starts], ['出場分', auto?.min], ['得点', auto?.g], ['アシスト', auto?.a], ['警告', auto?.y], ['退場', auto?.r], ['平均評価', auto?.avg?.toFixed(2)]].map(([k, v]) => `<div><div class="faint small">${k}</div><b>${v ?? 0}</b></div>`).join('')}</div></div>
+              <div class="lbl" style="margin:14px 0 6px">試合ごとの成績・評価（${esc(season)}）</div>${id ? `<div class="card flush">${matchLogHTML(id, season)}</div>` : ''}
               <div class="lbl" style="margin:14px 0 6px">手入力（${esc(season)}）</div><div data-ovwrap>${ovRows()}</div><div class="row" style="margin-top:8px"><button type="button" class="btn sm" data-oadd>${ic('plus')}行を追加</button><button type="button" class="btn sm ghost" data-oclear>自動集計に戻す</button></div>` },
           ] },
         ],
@@ -2248,7 +2479,7 @@ route(/^\/players$/, () => {
   const ps = playersOf(), st = playerStats({ season: curSeason() });
   const staff = c.staff.filter(s => !s.seasons || s.seasons.includes(curSeason()));
   let list = posF ? ps.filter(p => p.pos === posF) : ps;
-  const sorters = { pos: sortSquad, num: by(p => num(p.number) || 999), name: by(p => p.name), age: by(p => p.birth || '9', -1), apps: by(p => st[p.id]?.apps || 0, -1), g: by(p => st[p.id]?.g || 0, -1), a: by(p => st[p.id]?.a || 0, -1), min: by(p => st[p.id]?.min || 0, -1) };
+  const sorters = { pos: sortSquad, num: by(p => num(p.number) || 999), name: by(p => p.name), age: by(p => p.birth || '9', -1), apps: by(p => st[p.id]?.apps || 0, -1), ovr: by(p => Ovr.of(p)?.ovr || 0, -1), g: by(p => st[p.id]?.g || 0, -1), a: by(p => st[p.id]?.a || 0, -1), min: by(p => st[p.id]?.min || 0, -1) };
   list = list.slice().sort(sorters[sortK] || sortSquad);
   const th = (k, l, cls = '') => `<th class="sort ${sortK === k ? 'sorted' : ''} ${cls}" data-act="pSort" data-k="${k}">${l}</th>`;
   const qs = (o) => '#/players?' + new URLSearchParams({ tab, pos: posF, sort: sortK, ...o }).toString();
@@ -2256,8 +2487,8 @@ route(/^\/players$/, () => {
     title: '選手管理',
     html: `<div class="ph"><div><h1>選手管理</h1><p>${esc(teamName(own()))} ・ ${esc(curSeason())} シーズン（上部で切替）</p></div><div class="actions">
         <label class="row small" style="gap:8px">HPに公開 <label class="toggle"><input type="checkbox" data-bind="career::design.menu.squad" ${c.design.menu.squad ? 'checked' : ''}><span></span></label></label></div></div>
-      <div class="tabs"><a href="${qs({ tab: 'players' })}" class="${tab === 'players' ? 'on' : ''}">選手<span class="cnt">${ps.length}</span></a><a href="${qs({ tab: 'staff' })}" class="${tab === 'staff' ? 'on' : ''}">スタッフ<span class="cnt">${staff.length}</span></a></div>
-      ${tab === 'staff' ? `<div class="row" style="margin-bottom:12px"><button class="btn primary" data-act="newStaff" data-new>${ic('plus')}スタッフを追加</button></div>
+      <div class="tabs"><a href="${qs({ tab: 'players' })}" class="${tab === 'players' ? 'on' : ''}">選手<span class="cnt">${ps.length}</span></a><a href="${qs({ tab: 'staff' })}" class="${tab === 'staff' ? 'on' : ''}">スタッフ<span class="cnt">${staff.length}</span></a><a href="${qs({ tab: 'ovr' })}" class="${tab === 'ovr' ? 'on' : ''}">能力値</a></div>
+      ${tab === 'ovr' ? ovrTab() : tab === 'staff' ? `<div class="row" style="margin-bottom:12px"><button class="btn primary" data-act="newStaff" data-new>${ic('plus')}スタッフを追加</button></div>
         ${staff.length ? `<div class="card flush"><div class="list">${staff.map(s => `<div class="li" data-act="editStaff" data-id="${s.id}">${avatar(s)}<div class="grow"><div class="t">${esc(s.name)}</div><div class="s">${esc(s.role === 'その他' ? s.roleText : s.role || '—')}${s.nationality ? ' ・ ' + esc(s.nationality) : ''}${s.age ? ' ・ ' + s.age + '歳' : ''}</div></div>${s.visible === false ? '<span class="chip">非公開</span>' : ''}</div>`).join('')}</div></div>` : '<div class="card empty"><b>スタッフがいません</b>監督・コーチを登録するとHPのクラブページに表示されます</div>'}`
       : `<div class="row" style="margin-bottom:12px">
           <button class="btn primary" data-act="newPlayer" data-new>${ic('plus')}選手を追加 <span class="kbd">N</span></button>
@@ -2268,8 +2499,8 @@ route(/^\/players$/, () => {
         <div class="row" style="margin-bottom:12px"><input class="input" data-search placeholder="名前・背番号で絞り込み…  ( / )" style="max-width:280px">
           <div class="seg">${['', ...POS4].map(p => `<a href="${qs({ pos: p })}" style="text-decoration:none"><button class="${posF === p ? 'on' : ''}">${p || 'すべて'} <span class="faint">${p ? ps.filter(x => x.pos === p).length : ps.length}</span></button></a>`).join('')}</div>
           <span class="grow"></span><span class="bulk" hidden><span class="small muted" data-bcnt></span> <button class="btn sm" data-act="bulkHide">HP非表示</button> <button class="btn sm" data-act="bulkShow">HP表示</button> <button class="btn sm" data-act="bulkRemove">今季から外す</button> <button class="btn sm danger" data-act="bulkDel">削除</button></span></div>
-        ${list.length ? `<div class="card flush tbl-wrap"><table class="tbl" data-ptable><thead><tr><th style="width:30px" class="hide-sm"><input type="checkbox" data-pall></th>${th('num', '#')}<th></th>${th('name', '選手')}${th('pos', 'Pos')}<th class="hide-sm">国籍</th>${th('age', '年齢', 'num hide-sm')}${th('apps', '試合', 'num')}${th('min', '分', 'num hide-sm')}${th('g', 'G', 'num')}${th('a', 'A', 'num')}<th class="hide-sm">HP</th></tr></thead><tbody>
-          ${list.map(p => { const s = st[p.id] || {}; return `<tr data-row="${p.id}" data-q="${esc((p.name + ' ' + (p.sub || '') + ' ' + p.number).toLowerCase())}" style="cursor:pointer"><td class="hide-sm"><input type="checkbox" data-psel="${p.id}"></td><td><b>${esc(p.number ?? '')}</b></td><td style="width:44px">${avatar(p, 'sm')}</td><td><div><b>${esc(p.name)}</b></div>${p.sub ? `<div class="small faint">${esc(p.sub)}</div>` : ''}</td><td><span class="pos ${p.pos}">${p.pos}</span> <span class="faint small">${esc(p.positions?.main || '')}</span></td><td class="hide-sm">${esc(p.nationality || '')}</td><td class="num hide-sm">${ageOf(p.birth) ?? ''}</td><td class="num">${s.apps || 0}</td><td class="num hide-sm">${s.min || 0}</td><td class="num">${s.g || 0}</td><td class="num">${s.a || 0}</td><td class="hide-sm"><label class="toggle" style="transform:scale(.8)"><input type="checkbox" data-bind="players:${p.id}:visible" ${p.visible !== false ? 'checked' : ''}><span></span></label></td></tr>`; }).join('')}
+        ${list.length ? `<div class="card flush tbl-wrap"><table class="tbl" data-ptable><thead><tr><th style="width:30px" class="hide-sm"><input type="checkbox" data-pall></th>${th('num', '#')}<th></th>${th('name', '選手')}${th('pos', 'Pos')}${th('ovr', 'OVR', 'num')}<th class="hide-sm">国籍</th>${th('age', '年齢', 'num hide-sm')}${th('apps', '試合', 'num')}${th('min', '分', 'num hide-sm')}${th('g', 'G', 'num')}${th('a', 'A', 'num')}<th class="hide-sm">HP</th></tr></thead><tbody>
+          ${list.map(p => { const s = st[p.id] || {}; return `<tr data-row="${p.id}" data-q="${esc((p.name + ' ' + (p.sub || '') + ' ' + p.number).toLowerCase())}" style="cursor:pointer"><td class="hide-sm"><input type="checkbox" data-psel="${p.id}"></td><td><b>${esc(p.number ?? '')}</b></td><td style="width:44px">${avatar(p, 'sm')}</td><td><div><b>${esc(p.name)}</b></div>${p.sub ? `<div class="small faint">${esc(p.sub)}</div>` : ''}</td><td><span class="pos ${p.pos}">${p.pos}</span> <span class="faint small">${esc(p.positions?.main || '')}</span></td><td class="num">${Ovr.of(p)?.ovr ?? '<span class="faint">—</span>'}</td><td class="hide-sm">${esc(p.nationality || '')}</td><td class="num hide-sm">${ageOf(p.birth) ?? ''}</td><td class="num">${s.apps || 0}</td><td class="num hide-sm">${s.min || 0}</td><td class="num">${s.g || 0}</td><td class="num">${s.a || 0}</td><td class="hide-sm"><label class="toggle" style="transform:scale(.8)"><input type="checkbox" data-bind="players:${p.id}:visible" ${p.visible !== false ? 'checked' : ''}><span></span></label></td></tr>`; }).join('')}
         </tbody></table></div>` : `<div class="card empty"><b>選手がいません</b>API-Footballから取り込むか、CSV・手入力で追加できます<div class="row" style="justify-content:center;margin-top:12px"><button class="btn primary" data-act="afSquad">${ic('cloud')}APIから取り込み</button><button class="btn" data-act="newPlayer">手入力で追加</button></div></div>`}`}`,
     after() {
       const s = $('[data-search]'); if (s) s.oninput = () => $$('[data-row]').forEach(r => r.hidden = !r.dataset.q.includes(s.value.toLowerCase()));
@@ -2368,28 +2599,35 @@ const Comps = {
       ],
       value: { start: `${parseInt(k.season)}-08-16`, interval: 7, time: '15:00', double: true, ownOnly: true },
       onSave: v => {
-        const ids = teams.slice(); if (ids.length % 2) ids.push(null);
-        const n = ids.length, rounds = [];
-        for (let r = 0; r < n - 1; r++) {
-          const pairs = [];
-          for (let i = 0; i < n / 2; i++) { const a = ids[i], b = ids[n - 1 - i]; if (a && b) pairs.push(r % 2 ? [b, a] : [a, b]); }
-          rounds.push(pairs); ids.splice(1, 0, ids.pop());
-        }
-        const all = v.double ? [...rounds, ...rounds.map(rs => rs.map(([a, b]) => [b, a]))] : rounds;
-        const out = [];
-        all.forEach((pairs, ri) => {
-          const d = new Date(v.start + 'T00:00:00'); d.setDate(d.getDate() + ri * (num(v.interval) || 7));
-          const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-          pairs.forEach(([h, a]) => { if (!v.ownOnly || h === own() || a === own()) out.push({ id: uid(), compId, season: k.season, round: ri + 1, date, time: v.time, homeId: h, awayId: a, status: 'scheduled', hs: '', as: '', events: [], lineup: { formation: '4-3-3', starters: [], bench: [] }, stats: {} }); });
-        });
-        Store.commit(`日程生成(${out.length}試合)`, c => { c.matches.push(...out); if (!k.rounds) k.rounds = all.length; }, { toast: `${out.length}試合を作成しました` });
+        const out = Comps.makeFixtures(k, v);
+        Store.commit(`日程生成(${out.length}試合)`, c => { c.matches.push(...out); if (!k.rounds) k.rounds = out._rounds; }, { toast: `${out.length}試合を作成しました` });
       },
     });
   },
-  manualTable(compId) {
+  /* round-robin (circle method); returns new match objects */
+  makeFixtures(k, v) {
+    const ids = (k.teamIds || []).slice(); if (ids.length % 2) ids.push(null);
+    const n = ids.length, rounds = [];
+    for (let r = 0; r < n - 1; r++) {
+      const pairs = [];
+      for (let i = 0; i < n / 2; i++) { const a = ids[i], b = ids[n - 1 - i]; if (a && b) pairs.push(r % 2 ? [b, a] : [a, b]); }
+      rounds.push(pairs); ids.splice(1, 0, ids.pop());
+    }
+    const all = v.double ? [...rounds, ...rounds.map(rs => rs.map(([a, b]) => [b, a]))] : rounds;
+    const out = [];
+    all.forEach((pairs, ri) => {
+      const d = new Date(v.start + 'T00:00:00'); d.setDate(d.getDate() + ri * (num(v.interval) || 7));
+      const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      pairs.forEach(([h, a]) => { if (!v.ownOnly || h === own() || a === own()) out.push({ id: uid(), compId: k.id, season: k.season, round: ri + 1, date, time: v.time, homeId: h, awayId: a, status: 'scheduled', hs: '', as: '', events: [], lineup: { formation: '4-3-3', starters: [], bench: [] }, stats: {} }); });
+    });
+    out._rounds = all.length;
+    return out;
+  },
+  manualTable(compId, pre = null) {
     const k = compById(compId), rows = standings({ ...k, adjust: {} });
     const adj = k.adjust || {};
     const cur = Object.fromEntries(rows.map(r => [r.id, ['p', 'w', 'd', 'l', 'gf', 'ga'].reduce((o, x) => (o[x] = r[x] + num(adj[r.id]?.[x]), o), { pts: num(adj[r.id]?.pts) })]));
+    if (pre) for (const [id, x] of Object.entries(pre)) if (cur[id]) { ['p', 'w', 'd', 'l', 'gf', 'ga'].forEach(f => { if (x[f] != null) cur[id][f] = num(x[f]); }); cur[id].pts = x.pts != null ? num(x.pts) - (num(x.w) * 3 + num(x.d)) : 0; }
     const m = UI.modal({
       title: '順位表を手入力・補正', cls: 'xwide',
       body: `<div class="notice">ゲーム内の順位表の数字をそのまま入力してください。登録済みの試合結果との差分を「補正値」として保存するので、今後試合結果を入力しても二重計上されません。勝点は 勝×3＋分 で自動計算（勝点補正で調整可）。</div>
@@ -2442,7 +2680,7 @@ route(/^\/competitions\/([\w]+)$/, id => {
     <div class="ph"><div class="row nowrap">${k.logo ? `<img class="crest lg" src="${esc(src(k.logo))}">` : ''}<div><h1>${esc(k.name)}</h1><p>${esc(k.season)} ・ ${FORMATS[k.format]} ・ ${(k.teamIds || []).length}チーム</p></div></div>
       <div class="actions"><button class="btn" data-act="editComp" data-id="${id}">${ic('edit')}設定</button>${k.format !== 'cup' ? `<button class="btn" data-act="genFix" data-id="${id}">日程を自動生成</button>` : ''}<button class="btn primary" data-act="newCompMatch" data-id="${id}" data-new>${ic('plus')}試合を追加</button></div></div>
     <div class="tabs"><a href="#/competitions/${id}" class="${tab === 'fixtures' ? 'on' : ''}">日程・結果<span class="cnt">${ms.length}</span></a>${k.format !== 'cup' ? `<a href="#/competitions/${id}?tab=table" class="${tab === 'table' ? 'on' : ''}">順位表</a>` : ''}</div>
-    ${tab === 'table' ? `<div class="row" style="margin-bottom:12px"><button class="btn" data-act="manualTable" data-id="${id}">${ic('edit')}順位表を手入力・補正</button><span class="hint">試合結果から自動計算＋手入力の補正値</span></div><div class="card flush">${tableHTML(k)}</div>
+    ${tab === 'table' ? `<div class="row" style="margin-bottom:12px"><button class="btn" data-act="tableShot" data-id="${id}">${ic('sparkle')}スクショから読み取り</button><button class="btn" data-act="manualTable" data-id="${id}">${ic('edit')}順位表を手入力・補正</button><span class="hint">試合結果から自動計算＋手入力の補正値</span></div><div class="card flush">${tableHTML(k)}</div>
       <div class="legend" style="margin-top:10px">${[['top1', '#3b82f6'], ['top2', '#f59e0b'], ['bottom', '#ef4444']].filter(([z]) => num(k.zones?.[z])).map(([z, col]) => `<span><i style="background:${col}"></i>${esc(k.zones[z + 'Label'] || '')}</span>`).join('')}</div>`
       : ms.length ? `<div class="row" style="margin-bottom:10px"><span class="hint">未消化の試合はスコア欄に直接入力できます（両方入れると「試合終了」で保存）</span>${firstOpen ? `<a class="btn sm" href="#rnd-${encodeURIComponent(firstOpen)}" data-act="jumpRound" data-r="${esc(firstOpen)}">次の未消化節へ</a>` : ''}</div>
         <div class="card flush">${rnds.map(r => `<div class="round-h" id="rnd-${esc(r)}">${esc(r)}<span class="faint">${fmtDate(groups[r][0].date, { wd: true })}</span></div>${groups[r].map(m => matchRow(m, { quick: true, noComp: true })).join('')}`).join('')}</div>`
@@ -2755,43 +2993,6 @@ Object.assign(Actions, {
   motmAuto: a => { const m = matchById(a.dataset.id); const best = Object.entries(m.ratings || {}).filter(([, v]) => v !== '').sort((x, y) => num(y[1]) - num(x[1]))[0]; if (!best) return UI.toast('評価点を入力してください'); Store.commit('MOM', () => m.motm = best[0], { toast: `MOM: ${pname(best[0])}` }); },
 });
 
-/* AI screenshot reader */
-const ShotReader = {
-  open(m) {
-    const md = UI.modal({ title: 'スクリーンショットから読み取り (AI)', cls: 'wide', body: `<div class="notice">ゲームの試合結果画面（スコア・スタッツ・得点者）のスクリーンショットを読み込みます。読み取り結果は確認してから反映できます。</div><div class="dropzone" data-dz>画像をドロップ / クリックして選択 / Ctrl+V で貼り付け<input type="file" accept="image/*" hidden></div><div data-out></div>`, foot: `<span class="grow"></span><button class="btn ghost" data-c>閉じる</button><button class="btn primary" data-apply disabled>反映する</button>` });
-    let res = null;
-    const dz = md.$('[data-dz]'), fi = $('input', dz);
-    const run = async f => {
-      if (!f) return; md.$('[data-out]').innerHTML = `<div class="empty">${ic('sparkle')} 読み取り中…（数十秒かかることがあります）</div>`;
-      try {
-        res = await AI.readScreenshot(f, m);
-        const evs = (res.events || []);
-        md.$('[data-out]').innerHTML = `<div class="card"><div class="row"><b>スコア</b> ${res.homeScore ?? '?'} - ${res.awayScore ?? '?'}</div><div class="sep"></div><div class="small">${Object.entries(res.stats || {}).map(([k, v]) => `${esc(STAT_KEYS.find(s => s[0] === k)?.[1] || k)}: ${esc(v?.join(' - '))}`).join('<br>') || 'スタッツなし'}</div><div class="sep"></div><div class="small">${evs.map(e => `${e.minute}' ${esc(EV[e.type]?.l || e.type)} ${esc(e.player || '')} ${e.assist ? '(A ' + esc(e.assist) + ')' : ''} [${e.side}]`).join('<br>') || 'イベントなし'}</div></div>
-          <label class="row small"><input type="checkbox" data-o="score" checked>スコア</label><label class="row small"><input type="checkbox" data-o="stats" checked>スタッツ</label><label class="row small"><input type="checkbox" data-o="events" ${m.events.length ? '' : 'checked'}>イベントを追加${m.events.length ? '（既存イベントあり・重複注意）' : ''}</label>`;
-        md.$('[data-apply]').disabled = false;
-      } catch (e) { md.$('[data-out]').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
-    };
-    dz.onclick = () => fi.click(); fi.onchange = () => run(fi.files[0]);
-    dz.ondragover = e => { e.preventDefault(); dz.classList.add('drag'); }; dz.ondrop = e => { e.preventDefault(); dz.classList.remove('drag'); run(e.dataTransfer.files[0]); };
-    md.el.addEventListener('paste', e => run([...e.clipboardData.files][0]));
-    md.$('[data-c]').onclick = () => md.close();
-    md.$('[data-apply]').onclick = () => {
-      const on = k => md.$(`[data-o=${k}]`)?.checked;
-      const find = name => { if (!name) return null; const n = name.toLowerCase(); const ps = playersOf(m.season); return (ps.find(p => p.name.toLowerCase() === n) || ps.find(p => p.name.toLowerCase().includes(n) || n.includes(shortName(p.name).toLowerCase())))?.id || null; };
-      Store.commit('AI読み取り反映', () => {
-        if (on('score') && res.homeScore != null) { m.hs = res.homeScore; m.as = res.awayScore; m.status = 'finished'; }
-        if (on('stats')) for (const [k, v] of Object.entries(res.stats || {})) if (Array.isArray(v)) m.stats[k] = v.map(x => x ?? '');
-        if (on('events')) for (const e of res.events || []) {
-          const tid = e.side === 'home' ? m.homeId : m.awayId, ours = tid === own();
-          const o = { id: uid(), type: e.type, minute: num(e.minute), teamId: tid };
-          if (ours) { o.pid = find(e.player); if (!o.pid) o.name = e.player; o.assistPid = find(e.assist) || ''; } else { o.name = e.player || ''; o.assistName = e.assist || ''; }
-          m.events.push(o);
-        }
-      }, { toast: '反映しました' });
-      md.close();
-    };
-  },
-};
 
 /* ===== news / tv / club / design / trophies / transfers ===== */
 const News = {
@@ -2825,6 +3026,7 @@ const News = {
       onDelete: id ? () => Store.commit('ニュース削除', c => c.news = c.news.filter(x => x.id !== id), { toast: '削除しました' }) : null,
       onSave: (v, mm) => {
         v.status = mm._draft ? 'draft' : 'published';
+        if (n.auto) v.edited = true;
         if (v.mode === 'ai' || pre.matchId) v.matchId = $('[data-aim]', mm.el)?.value || n.matchId || '';
         if (v.hero && v.status === 'published' && heroCount >= 3) UI.toast('ヒーローは最大3件表示です（古いものから表示されなくなります）');
         if (id) Store.commit('ニュース編集', () => Object.assign(n, v), { toast: v.status === 'draft' ? '下書き保存しました' : '公開しました' });
@@ -2950,7 +3152,7 @@ document.addEventListener('change', async e => {
 
 /* ---------- design ---------- */
 const BG = { white: ['ホワイト', '#f5f6f8'], navy: ['ネイビー', '#0b1430'], blue: ['ブルー', '#0b3a8c'], yellow: ['イエロー', '#f2c200'], red: ['レッド', '#b40f1e'], wine: ['ワイン', '#5c0f24'], green: ['グリーン', '#0d5a2c'], black: ['ブラック', '#07080b'] };
-const MENU = [['news', 'News'], ['tv', 'TV'], ['club', 'Club'], ['transfers', 'Transfers'], ['matches', 'Matches'], ['table', 'Table'], ['stats', 'Stats'], ['squad', 'Squad'], ['history', 'History']];
+const MENU = [['news', 'News'], ['tv', 'TV'], ['club', 'Club'], ['transfers', 'Transfers'], ['matches', 'Matches'], ['table', 'Table'], ['stats', 'Stats'], ['squad', 'Squad'], ['awards', 'Awards'], ['history', 'History']];
 route(/^\/design$/, () => {
   const d = C().design;
   const ch = (k, list) => `<div class="choice">${list.map(([v, l, s]) => `<button class="${String(d[k]) === String(v) ? 'on' : ''}" data-act="setDesign" data-k="${k}" data-v="${v}"><b>${l}</b><small>${s}</small></button>`).join('')}</div>`;
@@ -3200,6 +3402,336 @@ Object.assign(Actions, {
   bkFields: () => { const c = C(); UI.form({ title: '表示項目の設定', fields: [{ k: 'fields', type: 'checks', cls: 'full', opts: BK_FIELDS }], value: { fields: c.bookletSel.fields }, onSave: v => Store.commit('名鑑設定', () => c.bookletSel.fields = v.fields) }); },
 });
 
+/* ===== career-mode extras: screenshot reading, season transition, OVR/POT growth, auto news, awards, board objectives, contracts ===== */
+const posGroup = code => { const c = String(code || '').toUpperCase(); if (c === 'GK') return 'GK'; if (/^(CB|LB|RB|LWB|RWB|SW|DF)$/.test(c)) return 'DF'; if (/^(ST|CF|LW|RW|LF|RF|FW)$/.test(c)) return 'FW'; if (c) return 'MF'; return ''; };
+const sideOf = code => /^L/.test(code || '') ? 0 : /^R/.test(code || '') ? 2 : 1;
+
+/* ---------- generic screenshot → AI → preview → apply dialog ---------- */
+const ShotDialog = {
+  open({ title, hint, read, preview, apply }) {
+    const md = UI.modal({
+      title, cls: 'wide',
+      body: `<div class="notice">${hint}</div><div class="dropzone" data-dz>${ic('upload')} 画像を選択 / ドロップ / Ctrl+V で貼り付け（複数枚OK・スマホならカメラで撮影も可）<input type="file" accept="image/*" multiple hidden></div><div class="row" data-thumbs></div><div data-out></div>`,
+      foot: `<span class="hint grow">${AI.provider() === 'gemini' ? 'Gemini（無料枠）' : 'Claude'}で読み取ります</span><button class="btn" data-read disabled>${ic('sparkle')}読み取る</button><button class="btn primary" data-apply disabled>反映する</button>`,
+    });
+    let files = [], res = null;
+    const draw = () => { md.$('[data-thumbs]').innerHTML = files.map((f, i) => `<span style="position:relative;display:inline-block"><img src="${URL.createObjectURL(f)}" style="height:70px;border-radius:8px;display:block"><button class="btn xs" data-rm="${i}" style="position:absolute;top:3px;right:3px;min-height:0;padding:1px 6px">×</button></span>`).join(''); md.$('[data-read]').disabled = !files.length; };
+    const add = fs => { files.push(...[...fs].filter(f => f.type.startsWith('image/'))); draw(); };
+    const dz = md.$('[data-dz]'), fi = $('input', dz);
+    dz.onclick = () => fi.click(); fi.onchange = () => { add(fi.files); fi.value = ''; };
+    dz.ondragover = e => { e.preventDefault(); dz.classList.add('drag'); }; dz.ondragleave = () => dz.classList.remove('drag');
+    dz.ondrop = e => { e.preventDefault(); dz.classList.remove('drag'); add(e.dataTransfer.files); };
+    md.el.addEventListener('paste', e => add(e.clipboardData.files));
+    md.$('[data-thumbs]').onclick = e => { const b = e.target.closest('[data-rm]'); if (b) { files.splice(+b.dataset.rm, 1); draw(); } };
+    md.$('[data-read]').onclick = async () => {
+      const btn = md.$('[data-read]'); btn.disabled = true;
+      md.$('[data-out]').innerHTML = `<div class="empty">${ic('sparkle')} 読み取り中…（10〜40秒）</div>`;
+      try { res = await read(files); md.$('[data-out]').innerHTML = preview(res); md.$('[data-apply]').disabled = false; }
+      catch (e) { md.$('[data-out]').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+      btn.disabled = false;
+    };
+    md.$('[data-apply]').onclick = () => { const opt = Object.fromEntries($$('[data-o]', md.el).map(i => [i.dataset.o, i.checked])); if (apply(res, opt, md) !== false) md.close(); };
+    if (!AI.ready()) setTimeout(() => md.$('[data-out]').innerHTML = `<div class="notice warn">AIのAPIキーが未設定です。<a href="#/settings">設定</a>で Gemini の無料キーを入れてください（Googleアカウントだけで無料）。</div>`);
+  },
+};
+const okName = (id, name) => id ? `<b>${esc(pname(id))}</b>` : `<span style="color:var(--warn)" title="登録選手と一致しませんでした">${esc(name || '?')} ⚠</span>`;
+
+/* ---------- post-match screenshots ---------- */
+const ShotReader = {
+  open(m) {
+    ShotDialog.open({
+      title: '試合後スクショから入力 (AI)',
+      hint: 'FC27の試合後画面（<b>試合結果/タイムライン</b>・<b>スタッツ</b>・<b>選手評価</b>）を撮って入れてください。何枚でもOK。スコア・得点者・カード・交代・スタッツ・全員の評価点・MOMをまとめて入力します。',
+      read: files => AI.readMatch(files, m),
+      preview: r => {
+        const evs = r.events || [], rt = r.ratings || [];
+        return `<div class="grid g2"><div class="card"><div class="row" style="font-size:18px"><b>${esc(teamName(m.homeId))} ${r.homeScore ?? '?'} - ${r.awayScore ?? '?'} ${esc(teamName(m.awayId))}</b></div>
+          <div class="small" style="margin-top:8px">${evs.map(e => { const ours = (e.side === 'home' ? m.homeId : m.awayId) === own(); return `${e.minute}' ${EV[e.type]?.i || ''} ${e.type === 'sub' ? `${ours ? okName(matchPlayer(e.in, m.season), e.in) : esc(e.in || '')} ↔ ${ours ? okName(matchPlayer(e.out, m.season), e.out) : esc(e.out || '')}` : (ours ? okName(matchPlayer(e.player, m.season), e.player) : esc(e.player || '（相手）'))}${e.assist ? ` (A ${ours ? okName(matchPlayer(e.assist, m.season), e.assist) : esc(e.assist)})` : ''}`; }).join('<br>') || '<span class="faint">イベントなし</span>'}</div>
+          <div class="sep"></div><div class="small">${Object.entries(r.stats || {}).map(([k, v]) => `${esc(STAT_KEYS.find(s => s[0] === k)?.[1] || k)}: ${esc((v || []).join(' - '))}`).join(' ・ ') || '<span class="faint">スタッツなし</span>'}</div></div>
+          <div class="card flush">${rt.length ? `<table class="tbl"><thead><tr><th>選手</th><th class="num">評価</th><th></th></tr></thead><tbody>${rt.map(x => `<tr><td>${okName(matchPlayer(x.player, m.season), x.player)}</td><td class="num"><b>${esc(x.rating)}</b></td><td class="faint small">${esc(x.position || '')}${x.sub ? ' 途中' : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">選手評価なし</div>'}</div></div>
+          <div class="row" style="margin-top:10px">${[['score', 'スコア', true], ['stats', 'スタッツ', true], ['events', 'イベント', true], ['ratings', '評価点・MOM', true], ['lineup', 'メンバー（未登録なら評価画面から作成）', !m.lineup?.starters?.some(s => s.pid)]].map(([k, l, on]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-o="${k}" ${on ? 'checked' : ''}>${l}</label>`).join('')}</div>
+          <div class="hint">⚠ の名前は登録選手と一致しなかったものです（名前のまま記録されます）。同じ分・同じ種類のイベントは重複して追加しません。</div>`;
+      },
+      apply: (r, o) => {
+        const pid = n => matchPlayer(n, m.season);
+        Store.commit('スクショ入力', () => {
+          m.lineup = m.lineup || { formation: '4-3-3', starters: [], bench: [] }; m.events = m.events || []; m.ratings = m.ratings || {}; m.stats = m.stats || {};
+          if (o.score && r.homeScore != null) { m.hs = num(r.homeScore); m.as = num(r.awayScore); if (r.pk && r.pk.home != null) m.pk = { h: r.pk.home, a: r.pk.away }; m.status = 'finished'; }
+          if (o.stats) for (const [k, v] of Object.entries(r.stats || {})) if (Array.isArray(v)) m.stats[k] = v.map(x => x ?? '');
+          if (o.lineup && !m.lineup.starters.some(s => s.pid) && (r.ratings || []).length) {
+            const prev = matchesFor({}).filter(x => x.id !== m.id && x.lineup?.starters?.some(s => s.pid)).pop();
+            const f = prev?.lineup.formation || m.lineup.formation || '4-3-3', slots = formationSlots(f);
+            const rows = r.ratings.map(x => ({ id: pid(x.player), pos: x.position, sub: !!x.sub })).filter(x => x.id);
+            const st = (rows.some(x => x.sub) ? rows.filter(x => !x.sub) : rows.slice(0, 11)).slice(0, 11);
+            const order = { GK: 0, DF: 1, MF: 2, FW: 3 };
+            st.sort((a, b) => (order[posGroup(a.pos) || playerById(a.id).pos] - order[posGroup(b.pos) || playerById(b.id).pos]) || sideOf(a.pos) - sideOf(b.pos));
+            m.lineup = { formation: f, starters: st.map((x, i) => slots[i] && { key: slots[i].key, label: slots[i].label, pid: x.id }).filter(Boolean), bench: rows.filter(x => !st.includes(x)).map(x => x.id) };
+          }
+          if (o.events) for (const e of r.events || []) {
+            const tid = e.side === 'home' ? m.homeId : m.awayId, ours = tid === own();
+            const type = ['goal', 'pen', 'og', 'yellow', 'red', 'sub'].includes(e.type) ? e.type : 'goal';
+            const ev = { id: uid(), type, minute: num(e.minute), teamId: tid };
+            if (type === 'sub') { if (ours) { ev.inPid = pid(e.in) || ''; ev.outPid = pid(e.out) || ''; if (!ev.inPid) ev.inName = e.in || ''; if (!ev.outPid) ev.outName = e.out || ''; if (ev.inPid && !m.lineup.bench.includes(ev.inPid) && !m.lineup.starters.some(s => s.pid === ev.inPid)) m.lineup.bench.push(ev.inPid); } else { ev.inName = e.in || ''; ev.outName = e.out || ''; } }
+            else if (ours) { ev.pid = pid(e.player) || ''; if (!ev.pid) ev.name = e.player || ''; ev.assistPid = pid(e.assist) || ''; if (!ev.assistPid && e.assist) ev.assistName = e.assist; }
+            else { ev.name = e.player || ''; ev.assistName = e.assist || ''; }
+            if (!m.events.some(x => x.type === ev.type && num(x.minute) === ev.minute && x.teamId === ev.teamId)) m.events.push(ev);
+          }
+          if (o.ratings) {
+            for (const x of r.ratings || []) { const id = pid(x.player); if (id && x.rating != null) m.ratings[id] = num(x.rating); }
+            const best = Object.entries(m.ratings).sort((a, b) => num(b[1]) - num(a[1]))[0];
+            m.motm = pid(r.motm) || m.motm || best?.[0] || '';
+          }
+        }, { toast: '試合データを入力しました' });
+      },
+    });
+  },
+};
+
+/* ---------- league table screenshot ---------- */
+function tableShot(compId) {
+  const k = compById(compId);
+  ShotDialog.open({
+    title: '順位表をスクショから入力 (AI)',
+    hint: 'ゲーム内の<b>順位表</b>の画面を撮って入れてください（スクロールが必要なら複数枚）。読み取った数字は「順位表を手入力・補正」画面に入るので、確認してから保存できます。',
+    read: files => AI.readTable(files, k),
+    preview: r => `<div class="card flush tbl-wrap"><table class="tbl"><thead><tr><th>チーム</th><th>登録チーム</th><th class="num">試</th><th class="num">勝</th><th class="num">分</th><th class="num">敗</th><th class="num">得</th><th class="num">失</th><th class="num">点</th></tr></thead><tbody>${(r.rows || []).map(x => { const id = matchTeam(x.team, k.teamIds || []); return `<tr><td>${esc(x.team)}</td><td>${id ? esc(teamName(id)) : '<span style="color:var(--warn)">未登録 ⚠</span>'}</td>${['p', 'w', 'd', 'l', 'gf', 'ga', 'pts'].map(c => `<td class="num">${esc(x[c] ?? '')}</td>`).join('')}</tr>`; }).join('')}</tbody></table></div><label class="row small" style="gap:6px;margin-top:8px"><input type="checkbox" data-o="addTeams" checked>未登録のチームを追加して大会に参加させる</label>`,
+    apply: (r, o) => {
+      const pre = {};
+      Store.commit('順位表読み取り', c => {
+        for (const x of r.rows || []) {
+          let id = matchTeam(x.team, k.teamIds || []);
+          if (!id && o.addTeams) { id = matchTeam(x.team, c.teams.map(t => t.id)); if (!id) { id = uid(); c.teams.push({ id, name: x.team, logo: '', categoryId: '' }); } if (!k.teamIds.includes(id)) k.teamIds.push(id); }
+          if (id) pre[id] = x;
+        }
+      }, { render: false });
+      setTimeout(() => Comps.manualTable(compId, pre), 50);
+    },
+  });
+}
+
+/* ---------- OVR / POT ---------- */
+const Ovr = {
+  of(p, season = curSeason()) { return (p.ovrHist || []).filter(h => h.season === season).at(-1) || null; },
+  prev(p, season = curSeason()) { return (p.ovrHist || []).filter(h => h.season < season).at(-1) || null; },
+  first(p) { return (p.ovrHist || [])[0] || null; },
+  set(p, season, k, v) {
+    p.ovrHist = p.ovrHist || [];
+    let h = p.ovrHist.find(x => x.season === season);
+    if (!h) { h = { season, date: today(), ovr: '', pot: '' }; p.ovrHist.push(h); p.ovrHist.sort(by(x => x.season)); }
+    h[k] = v === '' ? '' : num(v); h.date = today();
+  },
+  delta(p) { const a = this.of(p), b = this.prev(p); return a && b && a.ovr !== '' && b.ovr !== '' ? a.ovr - b.ovr : null; },
+  chip(d) { return d == null ? '' : d > 0 ? `<span class="chip green">+${d}</span>` : d < 0 ? `<span class="chip red">${d}</span>` : '<span class="chip">±0</span>'; },
+  chart(p) {
+    const h = (p.ovrHist || []).filter(x => x.ovr !== ''); if (h.length < 2) return '';
+    return Chart.line([{ data: h.map(x => x.ovr), color: 'var(--accent)' }, ...(h.some(x => x.pot) ? [{ data: h.map(x => x.pot || x.ovr), color: '#94a3b8' }] : [])], { labels: h.map(x => x.season), h: 160, min: Math.max(0, Math.min(...h.map(x => x.ovr)) - 5), max: Math.min(99, Math.max(...h.map(x => x.pot || x.ovr)) + 3) });
+  },
+  shot() {
+    ShotDialog.open({
+      title: '能力値をスクショから入力 (AI)',
+      hint: 'FC27キャリアモードの<b>スカッド画面</b>（選手名・OVR・POTが見える一覧）を撮って入れてください。複数枚OK。今シーズン（' + esc(curSeason()) + '）の能力値として記録します。',
+      read: files => AI.readSquad(files),
+      preview: r => `<div class="card flush tbl-wrap"><table class="tbl"><thead><tr><th>読み取り</th><th>登録選手</th><th class="num">OVR</th><th class="num">POT</th><th class="num">年齢</th><th>Pos</th></tr></thead><tbody>${(r.players || []).map(x => { const id = matchPlayer(x.name, curSeason()); return `<tr><td>${esc(x.name)}</td><td>${id ? `<b>${esc(pname(id))}</b>` : '<span style="color:var(--warn)">新規 ⚠</span>'}</td><td class="num"><b>${esc(x.ovr ?? '')}</b></td><td class="num">${esc(x.pot ?? '')}</td><td class="num">${esc(x.age ?? '')}</td><td>${esc(x.pos ?? '')}</td></tr>`; }).join('')}</tbody></table></div><label class="row small" style="gap:6px;margin-top:8px"><input type="checkbox" data-o="addNew">一致しない選手を新規登録する（ユース昇格・新加入など）</label>`,
+      apply: (r, o) => {
+        let n = 0, a = 0;
+        Store.commit('能力値読み取り', c => {
+          for (const x of r.players || []) {
+            let p = playerById(matchPlayer(x.name, curSeason()));
+            if (!p && o.addNew) { p = { ...Players.blank(), id: uid(), name: x.name, number: x.number ?? '', pos: posGroup(x.pos) || 'MF', positions: { main: x.pos || '', subs: [] }, seasons: [curSeason()] }; if (x.age) p.birth = `${parseInt(curSeason()) - num(x.age)}-01-01`; c.players.push(p); a++; }
+            if (!p) continue;
+            if (x.ovr != null) Ovr.set(p, curSeason(), 'ovr', x.ovr); if (x.pot != null) Ovr.set(p, curSeason(), 'pot', x.pot); n++;
+          }
+        }, { toast: `${n}人の能力値を記録しました${a ? `（新規${a}人）` : ''}` });
+      },
+    });
+  },
+};
+
+/* ---------- season transition ---------- */
+const Season = {
+  isOver(s = curSeason()) {
+    const lg = C().competitions.filter(k => k.season === s && k.format !== 'cup' && (k.teamIds || []).includes(own()));
+    const ms = matchesFor({ season: s, friendly: false });
+    return lg.length > 0 && ms.length > 0 && ms.every(isDone);
+  },
+  next() {
+    const c = C(), s = curSeason(), ns = seasonShift(s, 1), y = parseInt(ns);
+    const ps = playersOf(s), comps = c.competitions.filter(k => k.season === s);
+    const endY = parseInt(s) + 1, expiring = p => p.contract?.until && p.contract.until <= `${endY}-06`;
+    UI.form({
+      title: `${s} → ${ns} シーズンへ`, cls: 'wide', saveLabel: '新シーズンを始める',
+      fields: [
+        { type: 'html', html: `<div class="notice">選手の引き継ぎ・大会のコピー・日程生成をまとめて行います。今シーズンのデータはそのまま残ります（上部のシーズン切替でいつでも見られます）。${Season.isOver(s) ? '' : '<br><b>まだ終わっていない試合があります。</b>'}</div>` },
+        { k: 'season', label: '新しいシーズン', type: 'select', opts: seasonsRange(1990, 2050) },
+        { type: 'section', label: '① 引き継ぐ選手', hint: '退団・契約満了・放出した選手はチェックを外してください（<span style="color:var(--warn)">満了</span>＝契約が今季まで）' },
+        { k: 'pids', type: 'checks', cls: 'full', filter: true, opts: ps.map(p => [p.id, `${p.number ?? ''} ${p.name}`, `<span class="pos ${p.pos}">${p.pos}</span>${expiring(p) ? '<span class="chip gold">満了</span>' : ''}`]) },
+        { type: 'section', label: '② 次のシーズンにも出る大会' },
+        { k: 'cids', type: 'checks', cls: 'full', opts: comps.map(k => [k.id, `${k.name}（${FORMATS[k.format]}・${(k.teamIds || []).length}チーム）`]) },
+        { k: 'fixtures', label: 'リーグ戦の日程を自動生成する', type: 'toggle', hint: '昇格・降格でチームが入れ替わる場合は、あとで大会の参加チームを直してから日程を生成してもOK' },
+        { k: 'start', label: '開幕日', type: 'date', show: v => v.fixtures },
+      ],
+      value: { season: ns, pids: ps.filter(p => !expiring(p)).map(p => p.id), cids: comps.map(k => k.id), fixtures: true, start: `${y}-08-15` },
+      onSave: v => {
+        let made = 0;
+        Store.commit('新シーズン', c => {
+          v.pids.forEach(id => { const p = playerById(id); if (!p.seasons.includes(v.season)) p.seasons.push(v.season); });
+          for (const id of v.cids) {
+            const k = compById(id), nk = { ...structuredClone(k), id: uid(), season: v.season, adjust: {} };
+            c.competitions.push(nk);
+            if (v.fixtures && k.format !== 'cup' && nk.teamIds.length > 1) { const ms = Comps.makeFixtures(nk, { start: v.start, interval: 7, time: '15:00', double: true, ownOnly: true }); c.matches.push(...ms); made += ms.length; }
+          }
+          c.currentSeason = v.season;
+        });
+        UI.toast(`${v.season} シーズン開始！${made ? `（${made}試合の日程を作成）` : ''}`, { ms: 5000 });
+        go('/');
+        setTimeout(() => UI.confirm('新シーズンの能力値（OVR/POT）を記録しますか？', { ok: '能力値ページへ', danger: false, sub: 'スカッド画面のスクショを入れるだけで成長を記録できます。' }).then(ok => ok && go('/players?tab=ovr')), 400);
+      },
+    });
+  },
+};
+
+/* ---------- auto news (match reports + milestones) ---------- */
+const AutoNews = {
+  queue: [],
+  cfg(c) { return c.autoNews = c.autoNews || { on: true, ai: false }; },
+  /** called inside every Store.commit: create/refresh articles for newly finished matches */
+  scan(c) {
+    const cfg = this.cfg(c);
+    if (!cfg.init) { c.matches.forEach(m => { if (isDone(m)) m.finishedAt = m.finishedAt || 1; }); cfg.init = true; return; }
+    const fresh = c.matches.filter(m => isDone(m) && !m.finishedAt);
+    fresh.forEach(m => m.finishedAt = Date.now());
+    if (!cfg.on) return;
+    for (const m of fresh.filter(isOwn).sort(by(m => m.date || ''))) this.forMatch(c, m);
+    // keep untouched auto match reports in step with later edits (scorers added after the score, etc.)
+    for (const n of c.news) {
+      if (n.auto !== 'report' || n.edited) continue;
+      const m = c.matches.find(x => x.id === n.matchId); if (!m || !isDone(m)) continue;
+      const sig = this.sig(m); if (n.sig === sig) continue;
+      const t = templateArticle(m); Object.assign(n, { title: t.title, body: t.body, sig, polished: false });
+      if (cfg.ai) this.queue.push(n.id);
+    }
+    if (this.queue.length) setTimeout(() => this.flush(), 300);
+  },
+  sig: m => [m.hs, m.as, (m.events || []).length, m.motm, (m.lineup?.starters || []).length].join('|'),
+  add(c, key, o) {
+    if (c.news.some(n => n.autoKey === key)) return;
+    const n = { id: uid(), mode: 'self', status: 'published', hero: false, image: '', label: 'お知らせ', date: today(), autoKey: key, ...o };
+    c.news.unshift(n);
+    if (this.cfg(c).ai && n.auto === 'report') this.queue.push(n.id);
+  },
+  forMatch(c, m) {
+    const t = templateArticle(m);
+    this.add(c, 'report:' + m.id, { auto: 'report', title: t.title, body: t.body, label: '試合結果', matchId: m.id, date: m.date || today(), sig: this.sig(m) });
+    const all = matchesFor({ done: true }), i = all.findIndex(x => x.id === m.id);
+    const before = playerStats({ ms: all.slice(0, i) }), after = playerStats({ ms: all.slice(0, i + 1) });
+    const me = teamName(own()), d = m.date || today(), opp = teamName(oppOf(m));
+    const goalsIn = pid => (m.events || []).filter(e => ['goal', 'pen'].includes(e.type) && e.pid === pid && e.teamId === own()).length;
+    for (const pid of Object.keys(after)) {
+      const p = playerById(pid); if (!p) continue;
+      const b = before[pid] || { apps: 0, g: 0 }, a = after[pid];
+      const g = goalsIn(pid);
+      if (g >= 3) this.add(c, `hat:${m.id}:${pid}`, { auto: 'milestone', label: '試合結果', date: d, title: `${p.name}がハットトリック達成！`, body: `${fmtDate(d, { wd: true })}の${opp}戦で、${p.name}が${g}ゴールを挙げ${g === 3 ? 'ハットトリック' : `${g}得点の大活躍`}を達成しました。\n\n今季通算 ${playerStats({ season: m.season })[pid]?.g || g} ゴール。`, matchId: m.id });
+      if (b.g === 0 && a.g > 0 && i > 0) this.add(c, `first:${pid}`, { auto: 'milestone', date: d, title: `${p.name}、${me}での初ゴール！`, body: `${opp}戦で${p.name}が${me}加入後初となるゴールを記録しました。`, matchId: m.id });
+      for (const t of [50, 100, 150, 200, 250, 300, 400, 500]) if (b.apps < t && a.apps >= t) this.add(c, `apps:${pid}:${t}`, { auto: 'milestone', date: d, title: `${p.name}が公式戦通算${t}試合出場を達成`, body: `${opp}戦への出場で、${p.name}は${me}での通算出場数が${t}試合に到達しました。\n\n通算 ${a.g} ゴール ${a.a} アシスト。` });
+      for (const t of [10, 25, 50, 75, 100, 150, 200, 300]) if (b.g < t && a.g >= t) this.add(c, `goals:${pid}:${t}`, { auto: 'milestone', date: d, title: `${p.name}が通算${t}ゴールに到達！`, body: `${opp}戦でのゴールにより、${p.name}は${me}での通算得点を${t}に伸ばしました（${a.apps}試合出場）。` });
+    }
+    const debut = Object.keys(after).filter(pid => !before[pid] && i > 0 && playerById(pid));
+    if (debut.length && debut.length <= 5) this.add(c, `debut:${m.id}`, { auto: 'milestone', date: d, title: `${debut.map(pname).join('、')}がデビュー`, body: `${opp}戦で${debut.map(pname).join('、')}が${me}での公式戦デビューを飾りました。`, matchId: m.id });
+    const res = all.slice(0, i + 1).map(x => resultOf(x));
+    let w = 0, u = 0; for (let j = res.length - 1; j >= 0 && res[j] === 'W'; j--) w++; for (let j = res.length - 1; j >= 0 && res[j] !== 'L'; j--) u++;
+    if (w >= 5 && w % 5 === 0) this.add(c, `win:${m.id}`, { auto: 'milestone', date: d, title: `${me}、公式戦${w}連勝！`, body: `${opp}戦の勝利で、公式戦${w}連勝となりました。` });
+    else if (u >= 10 && u % 10 === 0 && resultOf(m) !== 'W') this.add(c, `unb:${m.id}`, { auto: 'milestone', date: d, title: `${me}、公式戦${u}試合無敗`, body: `${opp}戦で負けなしを${u}試合に伸ばしました。` });
+    const [f, ag] = gfga(m), prevMax = Math.max(0, ...all.slice(0, i).map(x => { const [a1, b1] = gfga(x); return a1 - b1; }));
+    if (i >= 5 && f - ag >= 4 && f - ag > prevMax) this.add(c, `bigwin:${m.id}`, { auto: 'milestone', date: d, title: `クラブ記録！${opp}に${f}-${ag}の大勝`, body: `${opp}戦の${f}-${ag}は、クラブ記録として残る史上最大得失点差での勝利となりました。` });
+  },
+  async flush() {
+    const ids = [...new Set(this.queue)]; this.queue = [];
+    if (!AI.ready()) return;
+    for (const id of ids) {
+      const n = C().news.find(x => x.id === id); if (!n || n.edited || n.polished) continue;
+      try { const r = await AI.polish(n.title, n.body); Store.commit('AI記事', () => Object.assign(n, r, { polished: true }), { render: App.path() === '/news' }); }
+      catch (e) { UI.toast('AI記事の作成に失敗: ' + e.message, { err: true }); break; }
+    }
+  },
+};
+
+/* ---------- season awards ---------- */
+
+route(/^\/awards$/, () => {
+  const ss = allSeasons(), s = App.query().get('s') || curSeason(), r = Awards.compute(s);
+  const slots = formationSlots('4-3-3'), order = { GK: [], DF: [], MF: [], FW: [] };
+  r.xi.forEach(x => order[x.p.pos].push(x));
+  const flat = [...order.GK, ...order.DF, ...order.MF, ...order.FW];
+  const published = C().news.find(n => n.autoKey === 'awards:' + s);
+  return {
+    title: 'シーズン表彰',
+    html: `<div class="ph"><div><h1>シーズン表彰</h1><p>試合データから自動選出（タップで差し替え可）</p></div><div class="actions"><select class="input sm" style="width:auto" onchange="location.hash='/awards?s='+encodeURIComponent(this.value)">${ss.map(x => opt(x, x, s)).join('')}</select><button class="btn primary" data-act="awardsPublish" data-s="${s}">${ic('news')}${published ? '記事を更新' : '授賞式をHPに公開'}</button></div></div>
+    ${r.matches ? `<div class="grid g3" style="margin-bottom:14px">${Object.entries(Awards.LABELS).map(([k, [i, l]]) => { const x = r[k]; return `<div class="card" data-act="awardPick" data-k="${k}" data-s="${s}" style="cursor:pointer;display:flex;gap:12px;align-items:center"><span style="font-size:30px">${i}</span>${x?.p ? avatar(x.p, 'lg') : ''}<div class="grow"><div class="small muted">${l}</div><b style="font-size:16px">${x?.p ? esc(x.p.name) : '—'}</b><div class="small faint">${esc(Awards.line(k, x))}</div></div></div>`; }).join('')}</div>
+      <div class="card"><h3>シーズンベストイレブン</h3><div style="max-width:440px;margin:0 auto"><div class="pitch" style="--kit:${esc(C().design.accent)}"><div class="ln half"></div><div class="ln circ"></div><div class="ln box1"></div><div class="ln box2"></div>${slots.map((sl, i) => { const x = flat[i]; return x ? `<div class="slot filled" style="left:${sl.x}%;top:${sl.y}%"><div class="dot">${src(x.p.photo) ? `<img src="${esc(src(x.p.photo))}">` : esc(x.p.number ?? '')}</div><div class="nm">${esc(shortName(x.p.name))}</div></div>` : ''; }).join('')}</div></div></div>`
+      : '<div class="card empty"><b>このシーズンの試合結果がありません</b>試合結果を入力すると自動で選出されます</div>'}`,
+  };
+});
+Object.assign(Actions, {
+  awardsPublish: a => { const s = a.dataset.s, t = Awards.article(s); Store.commit('表彰記事', c => { const n = c.news.find(x => x.autoKey === 'awards:' + s); if (n) Object.assign(n, t); else c.news.unshift({ id: uid(), mode: 'self', status: 'published', hero: true, label: 'お知らせ', date: today(), autoKey: 'awards:' + s, ...t }); }, { toast: 'HPに公開しました' }); },
+  awardPick: a => UI.pick(a, [{ label: '自動選出に戻す', value: '' }, ...C().players.filter(p => p.seasons?.includes(a.dataset.s)).sort(sortSquad).map(p => ({ label: `${p.number ?? ''} ${p.name}`, sub: p.pos, value: p.id }))], { search: true, onPick: it => Store.commit('表彰差し替え', c => { c.awards = c.awards || {}; c.awards[a.dataset.s] = { ...(c.awards[a.dataset.s] || {}), [a.dataset.k]: it.value }; }) }),
+});
+
+/* ---------- board objectives & contracts (dashboard cards) ---------- */
+const OBJ_CATS = ['国内', '大陸', '財政', '育成', 'ブランド', 'その他'];
+const OBJ_ST = { prog: ['進行中', ''], done: ['達成', 'green'], fail: ['未達', 'red'] };
+const Objectives = {
+  edit(id) {
+    const o = id ? C().objectives.find(x => x.id === id) : { cat: '国内', imp: '重要', status: 'prog' };
+    UI.form({
+      title: id ? '目標を編集' : '理事会の目標を追加',
+      fields: [{ k: 'text', label: '目標', req: true, cls: 'full', ph: '例: リーグ4位以内 / 若手を10試合以上起用 / 賃金予算を守る' }, { k: 'cat', label: 'カテゴリ', type: 'seg', opts: OBJ_CATS, cls: 'full' }, { k: 'imp', label: '重要度', type: 'seg', opts: ['重要', '非常に重要', '最重要'] }, { k: 'status', label: '状況', type: 'seg', opts: Object.entries(OBJ_ST).map(([k, v]) => [k, v[0]]) }],
+      value: o,
+      onDelete: id ? () => Store.commit('目標削除', c => c.objectives = c.objectives.filter(x => x.id !== id)) : null,
+      onSave: v => id ? Store.commit('目標編集', () => Object.assign(o, v)) : Store.commit('目標追加', c => c.objectives.push({ id: uid(), season: curSeason(), ...v })),
+    });
+  },
+  card() {
+    const list = (C().objectives || []).filter(o => o.season === curSeason());
+    const done = list.filter(o => o.status === 'done').length;
+    return `<div class="card"><h3>${ic('star')}理事会の目標 <span class="faint small">${done}/${list.length} 達成</span><a class="more" href="javascript:" data-act="objAdd">＋追加</a></h3>${list.length ? `<div class="list">${list.map(o => `<div class="li" style="padding:8px 0" data-act="objEdit" data-id="${o.id}"><span class="chip">${esc(o.cat)}</span><div class="grow ell">${esc(o.text)}</div><button class="chip ${OBJ_ST[o.status][1]}" style="border:0;cursor:pointer" data-act="objCycle" data-id="${o.id}">${OBJ_ST[o.status][0]}</button></div>`).join('')}</div>` : '<div class="small muted">ゲームの理事会目標を登録すると、達成状況を追えます</div>'}</div>`;
+  },
+};
+const Contracts = {
+  list() {
+    const end = parseInt(curSeason()) + 1;
+    return playersOf().filter(p => p.contract?.until).map(p => ({ p, until: p.contract.until, lvl: p.contract.until <= `${end}-06` ? 2 : p.contract.until <= `${end + 1}-06` ? 1 : 0 })).filter(x => x.lvl).sort(by(x => x.until));
+  },
+  card() {
+    const l = this.list(); if (!l.length) return '';
+    return `<div class="card"><h3>${ic('cal')}契約の更新時期</h3><div class="list">${l.map(x => `<div class="li" style="padding:8px 0" data-act="editPlayer" data-id="${x.p.id}">${avatar(x.p, 'sm')}<div class="grow ell">${esc(x.p.name)}</div><span class="chip ${x.lvl === 2 ? 'red' : 'gold'}">${x.lvl === 2 ? '今季満了' : '来季満了'} ${esc(x.until.replace('-', '/'))}</span><button class="btn xs" data-act="extend" data-id="${x.p.id}">延長</button></div>`).join('')}</div></div>`;
+  },
+};
+Object.assign(Actions, {
+  objAdd: () => Objectives.edit(), objEdit: a => Objectives.edit(a.dataset.id),
+  objCycle: (a, e) => { e.stopPropagation(); const o = C().objectives.find(x => x.id === a.dataset.id); Store.commit('目標状況', () => o.status = { prog: 'done', done: 'fail', fail: 'prog' }[o.status]); },
+  extend: async (a, e) => { e.stopPropagation(); const p = playerById(a.dataset.id); const y = await UI.prompt(`${p.name} の新しい契約満了年`, String(parseInt(p.contract.until) + 2), { ph: '2030' }); if (y && /^\d{4}$/.test(y)) Store.commit('契約延長', () => p.contract.until = `${y}-06`, { toast: `${p.name} と ${y}年6月まで契約延長` }); },
+  nextSeason: () => Season.next(), ovrShot: () => Ovr.shot(),
+  tableShot: a => tableShot(a.dataset.id),
+});
+
+/* players page: OVR/POT tab */
+function ovrTab() {
+  const s = curSeason(), ps = playersOf(s), at = parseInt(s) + '-08-01';
+  const rows = ps.map(p => ({ p, cur: Ovr.of(p), prev: Ovr.prev(p), d: Ovr.delta(p) }));
+  const top = rows.filter(r => r.d != null).sort((a, b) => b.d - a.d).slice(0, 5);
+  const row = ({ p, cur, prev, d }) => `<tr><td>${esc(p.number ?? '')}</td><td><span class="row nowrap" style="gap:8px">${avatar(p, 'sm')}<b>${esc(p.name)}</b></span></td><td><span class="pos ${p.pos}">${p.pos}</span></td><td class="num hide-sm">${ageOf(p.birth, at) ?? ''}</td><td class="num faint">${prev?.ovr ?? '—'}</td>
+    <td><input class="input sm num" inputmode="numeric" data-ovr="${p.id}" data-k="ovr" value="${esc(cur?.ovr ?? '')}"></td><td><input class="input sm num" inputmode="numeric" data-ovr="${p.id}" data-k="pot" value="${esc(cur?.pot ?? '')}"></td><td class="num" data-delta="${p.id}">${Ovr.chip(d)}</td></tr>`;
+  return `<div class="row" style="margin-bottom:12px"><button class="btn primary" data-act="ovrShot">${ic('sparkle')}スカッド画面のスクショから記録</button><span class="hint">または下の表に直接入力（Tabで次へ）。${esc(s)}シーズンの値として保存されます。</span></div>
+    ${top.length ? `<div class="card" style="margin-bottom:14px"><h3>📈 今季の成長 TOP${top.length}</h3><div class="row" style="gap:16px">${top.map(r => `<div class="row nowrap" style="gap:8px">${avatar(r.p, 'sm')}<div><b class="small">${esc(r.p.name)}</b><div class="small faint">${r.prev.ovr} → ${r.cur.ovr} ${Ovr.chip(r.d)}</div></div></div>`).join('')}</div></div>` : ''}
+    ${ps.length ? `<div class="card flush tbl-wrap"><table class="tbl" data-ovrtbl><thead><tr><th>#</th><th>選手</th><th>Pos</th><th class="num hide-sm">年齢</th><th class="num">前季</th><th>OVR</th><th>POT</th><th class="num">増減</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>` : '<div class="card empty"><b>今シーズンの選手がいません</b></div>'}`;
+}
+document.addEventListener('change', e => {
+  const i = e.target.closest('[data-ovr]'); if (!i) return;
+  const p = playerById(i.dataset.ovr);
+  Store.commit('能力値', () => Ovr.set(p, curSeason(), i.dataset.k, i.value.trim()), { render: false });
+  const cell = $(`[data-delta="${p.id}"]`); if (cell) cell.innerHTML = Ovr.chip(Ovr.delta(p));
+});
+
 /* ===== standalone public-site export ===== */
 // captured before the first render replaces <body> (where the script tags live)
 const CORE_SRC = document.getElementById('js-core')?.textContent || '';
@@ -3271,11 +3803,12 @@ const Sync = {
     this.cfg = { token: o.t, login: o.l, gistId: o.g, repo: o.r || '', pagesUrl: o.u || '', lastRemote: '', lastSync: 0, dirty: false, siteAuto: true, lastSitePush: 0, canRepo: true };
     if (o.a) DB.settings.apiFootballKey = o.a;
     if (o.k) DB.settings.anthropicKey = o.k;
+    if (o.m) { DB.settings.geminiKey = o.m; DB.settings.aiProvider = DB.settings.aiProvider || 'gemini'; }
     await this.saveCfg(); await this.pull(true);
     UI.toast('この端末の同期設定が完了しました');
   },
   phoneLink() {
-    const code = b64url(JSON.stringify({ t: this.cfg.token, l: this.cfg.login, g: this.cfg.gistId, r: this.cfg.repo, u: this.cfg.pagesUrl, a: DB.settings.apiFootballKey || '', k: DB.settings.anthropicKey || '' }));
+    const code = b64url(JSON.stringify({ t: this.cfg.token, l: this.cfg.login, g: this.cfg.gistId, r: this.cfg.repo, u: this.cfg.pagesUrl, a: DB.settings.apiFootballKey || '', k: DB.settings.anthropicKey || '', m: DB.settings.geminiKey || '' }));
     return (this.cfg.pagesUrl || location.href.split('#')[0]) + '#sync=' + code;
   },
   /* ---------- data ---------- */
