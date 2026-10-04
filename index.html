@@ -948,6 +948,19 @@ function matchLogHTML(pid, season, { cls = 'tbl', link = m => '#/matches/' + m.i
     <div style="overflow-x:auto"><table class="${cls}"><thead><tr><th>日付</th><th>対戦</th><th>結果</th><th>出場</th><th>G</th><th>A</th><th>評価</th></tr></thead><tbody>${log.slice().reverse().map(x => { const r = resultOf(x.m), [f, ag] = gfga(x.m); return `<tr style="cursor:pointer" onclick="location.hash='${link(x.m).replace(/^#/, '')}'"><td>${fmtDate(x.m.date).slice(5)}</td><td>${x.m.homeId === own() ? 'vs' : '@'} ${esc(teamName(oppOf(x.m)))}</td><td><span class="res ${r} ${r}" style="display:inline-grid;place-items:center;width:20px;height:20px;border-radius:5px;color:#fff;font-size:10px;font-weight:800">${r}</span> ${f}-${ag}</td><td>${x.min}'${x.started ? '' : ' <small style="opacity:.6">途中</small>'}</td><td>${x.g || ''}</td><td>${x.a || ''}</td><td>${rtBadge(x.rating)}${x.motm ? ' ⭐' : ''}${x.y ? ' 🟨' : ''}${x.r ? ' 🟥' : ''}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
 
+/** "60M" "6000万" "1.2億" "500k" "€60,000,000" → number */
+function parseMoney(v) {
+  if (typeof v === 'number') return v;
+  let s = String(v ?? '').replace(/[,\s￥¥£€$]/g, '').replace(/円|ポンド|ユーロ|ドル/g, '');
+  if (!s) return '';
+  let total = 0, m;
+  const oku = s.match(/^([\d.]+)億/); if (oku) { total += parseFloat(oku[1]) * 1e8; s = s.slice(oku[0].length); }
+  const man = s.match(/^([\d.]+)万/); if (man) { total += parseFloat(man[1]) * 1e4; s = s.slice(man[0].length); }
+  if ((m = s.match(/^([\d.]+)\s*(bn|b|m|k)?$/i))) total += parseFloat(m[1]) * ({ bn: 1e9, b: 1e9, m: 1e6, k: 1e3 }[(m[2] || '').toLowerCase()] || 1);
+  else if (s) total += num(s);
+  return Math.round(total);
+}
+
 /* ===== public club website (rendered in-app as preview and exported as standalone HTML) ===== */
 const SITE_BG = { white: '#f5f6f8', navy: '#0b1430', blue: '#0b3a8c', yellow: '#f2c200', red: '#b40f1e', wine: '#5c0f24', green: '#0d5a2c', black: '#07080b' };
 const Site = {
@@ -3312,8 +3325,8 @@ const Transfers = {
         { k: 'number', label: '背番号', type: 'number', show: v => !id && v.src === 'new' && v.dir === 'in' },
         { k: 'club', label: '移籍元 / 移籍先', ph: '例: FC ○○', list: () => c.teams.map(x => x.name), cls: 'span2' },
         { k: 'currency', label: '通貨', type: 'select', opts: [['JPY', 'JPY(￥)'], ['GBP', 'GBP(£)'], ['EUR', 'EUR(€)'], ['USD', 'USD($)']] },
-        { k: 'fee', label: '金額', type: 'number', ph: '例: 10,000,000' },
-        { k: 'salary', label: '年俸', type: 'number', ph: '例: 10,000' },
+        { k: 'fee', label: '金額', ph: '例: 60M / 6000万 / 60000000', hint: 'M=百万・K=千・万・億 も使えます' },
+        { k: 'salary', label: '年俸', ph: '例: 5M / 120K' },
         { k: 'years', label: '契約年数', type: 'number', ph: '例: 3' },
         { k: 'date', label: '日付', type: 'date' },
         { k: 'season', label: 'シーズン', type: 'select', opts: seasonsRange(1990, 2050).reverse() },
@@ -3336,6 +3349,7 @@ const Transfers = {
         }, $('[data-k=playerName]', form).value);
       },
       onSave: v => {
+        v.fee = parseMoney(v.fee); v.salary = parseMoney(v.salary);
         if (id) return Store.commit('移籍編集', () => Object.assign(t, v), { toast: '保存しました' });
         if (v.src === 'existing' && !v.pid) { UI.toast('選手を選択してください', { err: true }); return false; }
         if (v.src === 'new' && !v.playerName) { UI.toast('選手名を入力してください', { err: true }); return false; }
@@ -3359,11 +3373,15 @@ route(/^\/transfers$/, () => {
   const c = C(), dir = App.query().get('dir') || 'in', s = curSeason();
   const ts = c.transfers.filter(t => t.season === s);
   const list = ts.filter(t => t.dir === dir).sort(by(t => t.date || ''));
-  const total = d => sum(ts.filter(t => t.dir === d && (t.currency || 'JPY') === c.currency), t => num(t.fee));
+  // totals per currency, so fees entered in €/£ are never silently dropped
+  const curs = [...new Set([c.currency || 'JPY', ...ts.filter(t => num(t.fee)).map(t => t.currency || c.currency || 'JPY')])];
+  const tot = (d, cur) => sum(ts.filter(t => t.dir === d && (t.currency || c.currency || 'JPY') === cur), t => num(t.fee));
+  const shown = curs.filter(cur => tot('in', cur) || tot('out', cur));
+  const lines = f => (shown.length ? shown : [c.currency || 'JPY']).map(cur => `<div>${f(cur)}</div>`).join('');
   return {
     title: '移籍管理',
-    html: `<div class="ph"><div><h1>移籍管理</h1><p>${esc(s)} シーズン ・ 金額は ${esc(c.currency)} 表示</p></div><div class="actions"><button class="btn primary" data-act="newTransfer" data-new>${ic('plus')}選手の移籍を記録する</button></div></div>
-    <div class="grid g3" style="margin-bottom:14px"><div class="card stat"><div class="k">支出（IN）</div><div class="v" style="color:var(--loss)">${money(total('in'), c.currency)}</div></div><div class="card stat"><div class="k">収入（OUT）</div><div class="v" style="color:var(--win)">${money(total('out'), c.currency)}</div></div><div class="card stat"><div class="k">収支</div><div class="v">${money(total('out') - total('in'), c.currency)}</div></div></div>
+    html: `<div class="ph"><div><h1>移籍管理</h1><p>${esc(s)} シーズン${shown.length > 1 ? ' ・ 通貨ごとに合計' : ''}</p></div><div class="actions"><button class="btn primary" data-act="newTransfer" data-new>${ic('plus')}選手の移籍を記録する</button></div></div>
+    <div class="grid g3" style="margin-bottom:14px"><div class="card stat"><div class="k">支出（IN）</div><div class="v" style="color:var(--loss)">${lines(cur => money(tot('in', cur), cur))}</div></div><div class="card stat"><div class="k">収入（OUT）</div><div class="v" style="color:var(--win)">${lines(cur => money(tot('out', cur), cur))}</div></div><div class="card stat"><div class="k">収支</div><div class="v">${lines(cur => { const n = tot('out', cur) - tot('in', cur); return `<span style="color:${n > 0 ? 'var(--win)' : n < 0 ? 'var(--loss)' : 'inherit'}">${n > 0 ? '+' : ''}${money(n, cur)}</span>`; })}</div></div></div>
     <div class="tabs"><a href="#/transfers?dir=in" class="${dir === 'in' ? 'on' : ''}">IN<span class="cnt">${ts.filter(t => t.dir === 'in').length}</span></a><a href="#/transfers?dir=out" class="${dir === 'out' ? 'on' : ''}">OUT<span class="cnt">${ts.filter(t => t.dir === 'out').length}</span></a></div>
     ${list.length ? `<div class="card flush tbl-wrap"><table class="tbl"><thead><tr><th>日付</th><th>選手</th><th>${dir === 'in' ? '移籍元' : '移籍先'}</th><th>種類</th><th class="num">金額</th><th class="num hide-sm">年俸</th><th class="num hide-sm">年数</th></tr></thead><tbody>${list.map(t => { const p = playerById(t.pid); return `<tr data-act="editTransfer" data-id="${t.id}" style="cursor:pointer"><td>${fmtDate(t.date)}</td><td><span class="row nowrap" style="gap:8px">${p ? avatar(p, 'sm') : ''}<b>${esc(p?.name || t.playerName)}</b>${p ? `<span class="pos ${p.pos}">${p.pos}</span>` : ''}</span></td><td>${esc(t.club || '—')}</td><td><span class="chip">${esc(t.kind)}</span></td><td class="num">${money(t.fee, t.currency)}</td><td class="num hide-sm">${money(t.salary, t.currency)}</td><td class="num hide-sm">${t.years || '—'}</td></tr>`; }).join('')}</tbody></table></div>`
       : `<div class="card empty"><b>まだ記録がありません</b>「＋ 選手の移籍を記録する」ボタンから追加してください</div>`}`,
