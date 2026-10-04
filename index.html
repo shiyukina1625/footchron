@@ -1606,7 +1606,7 @@ const Palette = {
   items() {
     const c = C(), out = [];
     NAV.flatMap(g => g.items).forEach(n => out.push({ group: 'ページ', label: n.label, icon: n.icon, kw: n.kw, run: () => go(n.path) }));
-    [['新しい試合を作成', () => Matches.create(), 'plus', 'match add'], ['選手を追加', () => Players.edit(), 'plus', 'player add'], ['ニュースを書く', () => News.edit(), 'plus', 'news'], ['次のシーズンへ', () => Season.next(), 'cal', 'season next 新シーズン'], ['能力値をスクショから記録', () => Ovr.shot(), 'sparkle', 'ovr pot 能力値'], ['シーズン表彰', () => go('/awards'), 'trophy', 'awards mvp'],
+    [['試合を追加', () => QuickFix.open(), 'plus', 'match add fixture 日程'], ['選手を追加', () => Players.edit(), 'plus', 'player add'], ['ニュースを書く', () => News.edit(), 'plus', 'news'], ['次のシーズンへ', () => Season.next(), 'cal', 'season next 新シーズン'], ['能力値をスクショから記録', () => Ovr.shot(), 'sparkle', 'ovr pot 能力値'], ['シーズン表彰', () => go('/awards'), 'trophy', 'awards mvp'],
      ['大会を作成', () => Comps.edit(), 'plus', 'competition'], ['リーグから大会を自動作成 (API)', () => LeagueImport.open(), 'cloud', 'league api premier laliga 自動'], ['チームを追加', () => Teams.edit(), 'plus', 'team'], ['移籍を記録', () => Transfers.edit(), 'plus', 'transfer'],
      ['API-Footballから選手を取り込み', () => ApiImport.squadDialog(), 'cloud', 'api squad import'], ['API-Footballからチーム検索', () => ApiImport.teamDialog(), 'cloud', 'api team'],
      ['バックアップを書き出す (JSON)', () => Settings.backup(), 'download', 'export backup'], ['公開サイトをHTML書き出し', () => SiteExport.run(), 'download', 'export html'],
@@ -2098,7 +2098,7 @@ Actions.quickAdd = () => {
     pend && ['sparkle', 'スクショで試合入力', `${fmtDate(pend.date)} vs ${teamName(oppOf(pend))}`, () => { go('/matches/' + pend.id); setTimeout(() => ShotReader.open(matchById(pend.id)), 120); }],
     pend && ['cal', '次の試合を手入力', `${fmtDate(pend.date)} vs ${teamName(oppOf(pend))}`, () => go('/matches/' + pend.id)],
     ['chart', '能力値を記録', 'OVR/POT（スクショ可）', () => go('/players?tab=ovr')],
-    ['plus', '試合を作成', '公式戦・親善試合', () => Matches.create()],
+    ['plus', '試合を追加', '相手をタップするだけ', () => QuickFix.open()],
     ['users', '選手を追加', '手入力', () => Players.edit()],
     ['cloud', '選手を取り込み', 'API-Football', () => ApiImport.squadDialog()],
     ['news', 'ニュースを書く', '', () => News.edit()],
@@ -2561,8 +2561,7 @@ const Comps = {
         const nid = uid();
         Store.commit('大会作成', c => c.competitions.push({ id: nid, adjust: {}, ...v }));
         go('/competitions/' + nid);
-        if (v.format !== 'cup' && v.teamIds.length > 1) setTimeout(() => Comps.fixtures(nid), 80);
-        else UI.toast('大会を作成しました');
+        UI.toast('大会を作成しました。「試合を追加」で相手をタップすると試合を登録できます', { ms: 4500 });
       },
       after: (m, form) => {
         const cnt = () => $('[data-tcnt]', form).textContent = `${$$('[data-checks] input:checked', form).length} チーム選択中`;
@@ -3570,10 +3569,10 @@ const Season = {
         { k: 'pids', type: 'checks', cls: 'full', filter: true, opts: ps.map(p => [p.id, `${p.number ?? ''} ${p.name}`, `<span class="pos ${p.pos}">${p.pos}</span>${expiring(p) ? '<span class="chip gold">満了</span>' : ''}`]) },
         { type: 'section', label: '② 次のシーズンにも出る大会' },
         { k: 'cids', type: 'checks', cls: 'full', opts: comps.map(k => [k.id, `${k.name}（${FORMATS[k.format]}・${(k.teamIds || []).length}チーム）`]) },
-        { k: 'fixtures', label: 'リーグ戦の日程を自動生成する', type: 'toggle', hint: '昇格・降格でチームが入れ替わる場合は、あとで大会の参加チームを直してから日程を生成してもOK' },
+        { k: 'fixtures', label: 'リーグ戦の総当たり日程を自動生成する', type: 'toggle', hint: 'ゲームの日程とは一致しません。通常はOFFのまま、「試合を追加」で相手をタップして登録するのがおすすめ' },
         { k: 'start', label: '開幕日', type: 'date', show: v => v.fixtures },
       ],
-      value: { season: ns, pids: ps.filter(p => !expiring(p)).map(p => p.id), cids: comps.map(k => k.id), fixtures: true, start: `${y}-08-15` },
+      value: { season: ns, pids: ps.filter(p => !expiring(p)).map(p => p.id), cids: comps.map(k => k.id), fixtures: false, start: `${y}-08-15` },
       onSave: v => {
         let made = 0;
         Store.commit('新シーズン', c => {
@@ -3814,10 +3813,10 @@ const LeagueImport = {
         { k: 'top2', label: '上位ゾーン2（橙）チーム数', type: 'number' }, { k: 'top2Label', label: 'ラベル' },
         { k: 'top3', label: '上位ゾーン3（緑）チーム数', type: 'number' }, { k: 'top3Label', label: 'ラベル' },
         { k: 'bottom', label: '降格（赤）チーム数', type: 'number' },
-        { k: 'fixtures', label: '日程（自チームの試合）も自動生成', type: 'toggle' },
+        { k: 'fixtures', label: '総当たり日程を自動生成する（ゲームの日程とは一致しません。通常はOFFのまま、試合ごとに追加）', type: 'toggle' },
         { k: 'start', label: '開幕日', type: 'date', show: v => v.fixtures },
       ],
-      value: { name: lg.name, season: curSeason(), teamIds: [own(), ...res.teams.filter(r => r !== ownApi).map(r => String(r.team.id))], top1: P[4][0] || '', top1Label: P[4][1] || 'CL', top2: P[5][0] || '', top2Label: P[5][1] || 'EL', top3: P[6]?.[0] || '', top3Label: P[6]?.[1] || 'ECL', bottom: P[3] || '', fixtures: true, start: `${parseInt(curSeason())}-08-15` },
+      value: { name: lg.name, season: curSeason(), teamIds: [own(), ...res.teams.filter(r => r !== ownApi).map(r => String(r.team.id))], top1: P[4][0] || '', top1Label: P[4][1] || 'CL', top2: P[5][0] || '', top2Label: P[5][1] || 'EL', top3: P[6]?.[0] || '', top3Label: P[6]?.[1] || 'ECL', bottom: P[3] || '', fixtures: false, start: `${parseInt(curSeason())}-08-15` },
       onSave: v => {
         const nid = uid(); let made = 0;
         Store.commit(`${v.name} を作成`, c => {
@@ -3840,6 +3839,81 @@ const LeagueImport = {
   },
 };
 Actions.leagueImport = () => LeagueImport.open();
+
+/* ===== quick fixture entry: tap an opponent crest = one match (date/round auto-advance) ===== */
+const QuickFix = {
+  last: null,
+  next(compId) {
+    const ms = C().matches.filter(m => m.season === curSeason() && isOwn(m) && (compId ? m.compId === compId : !m.compId)).sort(by(m => m.date || ''));
+    const lastAny = matchesFor({ season: curSeason() }).filter(m => m.date).at(-1);
+    const base = ms.at(-1)?.date || lastAny?.date;
+    let date = today();
+    if (base) { const d = new Date(base + 'T00:00:00'); d.setDate(d.getDate() + 7); date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+    const round = compId ? Math.max(0, ...ms.map(m => num(m.round))) + 1 : '';
+    return { date, round, time: ms.at(-1)?.time || '' };
+  },
+  open(pre = {}) {
+    const c = C(), comps = c.competitions.filter(k => k.season === curSeason());
+    const st = { compId: pre.compId ?? (comps.some(k => k.id === this.last) ? this.last : comps.find(k => k.format !== 'cup')?.id || comps[0]?.id || ''), side: 'home', friendlyType: '親善試合', added: [] };
+    Object.assign(st, this.next(st.compId));
+    const m = UI.modal({
+      title: '試合を追加', cls: 'wide',
+      body: `<div class="fgrid">
+          <div class="field span2"><label>大会</label><select class="input" data-q="compId">${comps.map(k => opt(k.id, k.name, st.compId)).join('')}${opt('', '単発試合（親善・練習）', st.compId)}</select></div>
+          <div class="field"><label>日付</label><input class="input" type="date" data-q="date"></div>
+          <div class="field"><label>節・ラウンド</label><input class="input" data-q="round" list="qf_rounds" placeholder="例: 5 / 準決勝"><datalist id="qf_rounds">${CUP_ROUNDS.map(r => `<option value="${r}">`).join('')}</datalist></div>
+          <div class="field"><label>自チーム</label><div class="seg accent" data-side><button type="button" data-v="home">ホーム</button><button type="button" data-v="away">アウェイ</button></div></div>
+          <div class="field"><label>キックオフ（任意）</label><input class="input" type="time" data-q="time"></div>
+        </div>
+        <div class="row"><b class="small">対戦相手をタップで追加</b><span class="hint">追加するたびに日付は1週間後・節は次へ進み、ホーム/アウェイが入れ替わります</span><span class="grow"></span><input class="input sm" placeholder="チームを絞り込み" data-qf style="max-width:180px"></div>
+        <div class="quick" data-opps style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))"></div>
+        <div data-added></div>`,
+      foot: `<button class="btn ghost" data-detail>詳細フォームで作成</button><span class="grow"></span><button class="btn" data-c>閉じる</button><button class="btn primary" data-open disabled>追加した試合を入力 →</button>`,
+    });
+    const $q = k => m.$(`[data-q="${k}"]`);
+    const sync = () => {
+      $q('date').value = st.date; $q('round').value = st.round; $q('time').value = st.time;
+      $$('[data-side] button', m.el).forEach(b => b.classList.toggle('on', b.dataset.v === st.side));
+      const comp = compById(st.compId), ids = (comp ? comp.teamIds : c.teams.map(t => t.id)).filter(id => id !== own());
+      const played = id => c.matches.filter(x => x.season === curSeason() && (comp ? x.compId === comp.id : !x.compId) && (x.homeId === id || x.awayId === id)).length;
+      const f = (m.$('[data-qf]').value || '').toLowerCase();
+      m.$('[data-opps]').innerHTML = ids.map(teamById).filter(t => t && (!f || t.name.toLowerCase().includes(f))).sort((a, b) => played(a.id) - played(b.id) || a.name.localeCompare(b.name)).map(t => { const n = played(t.id); return `<a href="javascript:" data-opp="${t.id}" style="align-items:center;text-align:center;padding:10px;${n >= 2 && comp ? 'opacity:.45' : ''}">${crest(t, 'md')}<b class="ell" style="max-width:100%;font-size:12px">${esc(t.name)}</b><small>${n ? `${n}試合登録済み` : '未対戦'}</small></a>`; }).join('') + `<a href="javascript:" data-newteam style="align-items:center;justify-content:center;text-align:center">${ic('plus')}<b style="font-size:12px">新しいチーム</b></a>`;
+      m.$('[data-added]').innerHTML = st.added.length ? `<div class="lbl" style="margin-top:4px">今回追加した試合</div><div class="row" style="gap:6px">${st.added.map(id => { const x = matchById(id); return x ? `<span class="chip blue">${esc(roundLabel(x) || fmtDate(x.date))} ${x.homeId === own() ? 'vs' : '@'} ${esc(teamName(oppOf(x)))} <button style="border:0;background:none;color:inherit;cursor:pointer" data-undo="${id}" title="取り消し">×</button></span>` : ''; }).join('')}</div>` : '';
+      m.$('[data-open]').disabled = !st.added.length;
+    };
+    m.el.addEventListener('change', e => {
+      const k = e.target.dataset.q; if (!k) return;
+      st[k] = e.target.value;
+      if (k === 'compId') { this.last = st.compId; Object.assign(st, this.next(st.compId)); }
+      sync();
+    });
+    m.$('[data-qf]').oninput = sync;
+    m.el.addEventListener('click', async e => {
+      const sb = e.target.closest('[data-side] [data-v]'); if (sb) { st.side = sb.dataset.v; sync(); return; }
+      const u = e.target.closest('[data-undo]'); if (u) { Store.commit('試合取り消し', c => c.matches = c.matches.filter(x => x.id !== u.dataset.undo)); st.added = st.added.filter(x => x !== u.dataset.undo); sync(); return; }
+      let oppId = e.target.closest('[data-opp]')?.dataset.opp;
+      if (e.target.closest('[data-newteam]')) {
+        const n = await UI.prompt('新しいチーム名'); if (!n) return;
+        oppId = uid(); Store.commit('チーム追加', c => { c.teams.push({ id: oppId, name: n, logo: '', categoryId: '' }); const k = compById(st.compId); if (k && !k.teamIds.includes(oppId)) k.teamIds.push(oppId); });
+      }
+      if (!oppId) return;
+      const comp = compById(st.compId), [homeId, awayId] = st.side === 'home' ? [own(), oppId] : [oppId, own()];
+      const r = st.round, mt = blankMatch({ compId: comp?.id || '', friendlyType: comp ? '' : st.friendlyType, round: comp ? (/^\d+$/.test(r) ? +r : r) : '', date: st.date, time: st.time, homeId, awayId, season: comp?.season || seasonOf(st.date) || curSeason() });
+      Store.commit('試合追加', () => C().matches.push(mt), { toast: `${roundLabel(mt) || fmtDate(mt.date)} ${teamName(homeId)} vs ${teamName(awayId)} を追加` });
+      st.added.push(mt.id);
+      const d = new Date(st.date + 'T00:00:00'); d.setDate(d.getDate() + 7); st.date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      if (/^\d+$/.test(r)) st.round = +r + 1;
+      st.side = st.side === 'home' ? 'away' : 'home';
+      sync();
+    });
+    m.$('[data-c]').onclick = () => m.close();
+    m.$('[data-detail]').onclick = () => { m.close(); Matches.create({ compId: st.compId }); };
+    m.$('[data-open]').onclick = () => { const id = st.added[0]; m.close(); go('/matches/' + id); };
+    sync();
+  },
+};
+Actions.newMatch = () => QuickFix.open();
+Actions.newCompMatch = a => QuickFix.open({ compId: a.dataset.id });
 
 /* ===== standalone public-site export ===== */
 // captured before the first render replaces <body> (where the script tags live)
