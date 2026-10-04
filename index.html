@@ -1105,7 +1105,7 @@ const Site = {
     player(id) {
       const p = playerById(id); if (!p) return '<div class="s-empty">選手が見つかりません</div>';
       const car = playerCareer(p), cur = car.find(x => x.season === curSeason()) || car.at(-1) || { apps: 0, g: 0, a: 0 };
-      const yrs = p.joinSeason ? parseInt(curSeason()) - parseInt(p.joinSeason) + 1 : null;
+      const yrs = p.joinSeason && parseInt(curSeason()) >= parseInt(p.joinSeason) ? parseInt(curSeason()) - parseInt(p.joinSeason) + 1 : null;
       const comps = (() => { const ms = matchesFor({ season: curSeason(), done: true }); const ids = [...new Set(ms.filter(m => (m.lineup?.starters || []).some(s => s.pid === id) || (m.events || []).some(e => e.inPid === id)).map(m => compLabel(m)))]; return ids.join(' / '); })();
       return `<a href="${this.link('/players')}" style="color:var(--muted);font-size:13px">← 選手一覧</a>
         <div class="s-prof" style="margin-top:14px"><div class="s-pl" style="aspect-ratio:4/5">${src(p.photo) ? `<img src="${esc(src(p.photo))}">` : ''}<span class="no" style="font-size:60px">${esc(p.number ?? '')}</span></div>
@@ -1759,7 +1759,7 @@ const ApiImport = {
     if (!t.apiId) {
       return this.teamDialog(r => { Store.commit('API連携', () => Object.assign(t, { apiId: r.team.id, logo: t.logo || r.team.logo, name: t.name || r.team.name })); this.squadDialog(teamId); });
     }
-    const m = UI.modal({ title: `${t.name} のスカッドを取り込み`, cls: 'wide', body: '<div class="empty">API-Footballから取得中…</div>', foot: `<label class="row small" style="gap:6px"><input type="checkbox" data-detail> 国籍・身長・体重・生年月日も取得（シーズン年: <input class="input sm" data-yr value="${parseInt(curSeason())}" style="width:70px">）</label><span class="grow"></span><button class="btn ghost" data-c>閉じる</button><button class="btn primary" data-go>取り込む</button>` });
+    const m = UI.modal({ title: `${t.name} のスカッドを取り込み`, cls: 'wide', body: '<div class="empty">API-Footballから取得中…</div>', foot: `<label class="row small" style="gap:6px"><input type="checkbox" data-join checked> 加入時期も取得（移籍履歴・API1回）</label><label class="row small" style="gap:6px"><input type="checkbox" data-detail> 国籍・身長・体重・生年月日も取得（シーズン年: <input class="input sm" data-yr value="${parseInt(curSeason())}" style="width:70px">）</label><span class="grow"></span><button class="btn ghost" data-c>閉じる</button><button class="btn primary" data-go>取り込む</button>` });
     m.$('[data-c]').onclick = () => m.close();
     let list = [];
     try { list = (await AF.squad(t.apiId))[0]?.players || []; } catch (e) { m.$('.modal-b').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
@@ -1784,11 +1784,33 @@ const ApiImport = {
           const data = { name: ap.name, number: ap.number ?? '', pos: AF.pos(ap.position), photo: ap.photo, apiId: ap.id };
           if (d.nationality) Object.assign(data, { nationality: natJa(d.nationality), height: num(d.height) || '', weight: num(d.weight) || '', birth: d.birth?.date || '', sub: [d.firstname, d.lastname].filter(Boolean).join(' ') });
           if (p) { Object.assign(p, data); if (!p.seasons.includes(season)) p.seasons.push(season); }
-          else c.players.push({ id: uid(), visible: true, seasons: [season], joinSeason: season, positions: { main: '', subs: [] }, sns: {}, params: { show: false, items: [] }, statOverrides: {}, ...data });
+          else c.players.push({ id: uid(), visible: true, seasons: [season], joinSeason: '', positions: { main: '', subs: [] }, sns: {}, params: { show: false, items: [] }, statOverrides: {}, ...data });
         }
       });
-      UI.toast(`${picked.length}人を取り込みました`, { undo: true }); m.close();
+      UI.toast(`${picked.length}人を取り込みました`, { undo: true });
+      const join = m.$('[data-join]').checked; m.close();
+      if (join) ApiImport.joinDates(teamId);
     };
+  },
+  /** join date = most recent transfer INTO the club (loan returns don't reset tenure), from API-Football's transfer history */
+  async joinDates(teamId = own()) {
+    const t = teamById(teamId);
+    if (!t?.apiId) return UI.toast('先にAPI-Footballと連携してください（選手の取り込み・エンブレム取得）', { err: true });
+    let res;
+    try { res = await AF.get('/transfers', { team: t.apiId }); } catch (e) { return UI.toast(e.message, { err: true }); }
+    const join = {};
+    for (const r of res) {
+      const ins = (r.transfers || []).filter(x => String(x.teams?.in?.id) === String(t.apiId) && !/back from loan/i.test(x.type || '')).sort(by(x => x.date || ''));
+      if (ins.length) join[r.player.id] = ins.at(-1).date;
+    }
+    let found = 0, cleared = 0;
+    Store.commit('加入時期を取得', c => {
+      for (const p of c.players.filter(p => p.apiId)) {
+        const d = join[p.apiId];
+        if (d) { p.joinDate = d; p.joinSeason = seasonOf(d); found++; }
+        else if (p.joinSeason && p.joinSeason === (p.seasons || [])[0] && !p.joinDate) { p.joinSeason = ''; cleared++; }
+      }
+    }, { toast: `${found}人の加入時期を設定しました${cleared ? `（履歴がない${cleared}人は「不明」にしました。下部組織出身などは選手編集で入力できます）` : ''}` });
   },
 };
 
@@ -1880,6 +1902,13 @@ const AI = {
     return this.readJSON(files, `これはサッカーゲーム「EA SPORTS FC」の順位表のスクリーンショットです。全チームの成績をJSONで返してください。
 {"rows":[{"team":"チーム名","p":試合数,"w":勝,"d":分,"l":敗,"gf":得点,"ga":失点,"pts":勝点}]}
 チーム名は次の登録名に近いものがあればその表記に合わせてください:\n${(comp.teamIds || []).map(teamName).join('\n')}`);
+  },
+  async readSquadText(text) {
+    const t = await this.call(`次は、サッカー選手の一覧（SoFIFA などのWebページからコピーしたテキスト）です。各選手の名前・総合値(OVR)・ポテンシャル(POT)・年齢・ポジションをJSONで返してください。説明文は不要、JSONのみ。
+{"players":[{"name":"選手名","ovr":総合値,"pot":ポテンシャル|null,"age":年齢|null,"pos":"ST等|null"}]}
+選手名は次の登録リストに近いものがあればその表記に合わせてください:\n${this.squadList(curSeason())}\n\n--- 貼り付けられたテキスト ---\n${String(text).slice(0, 30000)}`, { maxTokens: 8000, json: true });
+    const a = t.indexOf('{'), b = t.lastIndexOf('}'); if (a < 0) throw new Error('読み取り結果を解釈できませんでした');
+    return JSON.parse(t.slice(a, b + 1));
   },
   readSquad(files) {
     return this.readJSON(files, `これはサッカーゲーム「EA SPORTS FC」キャリアモードのスカッド/選手一覧画面のスクリーンショットです。表示されている全選手をJSONで返してください。
@@ -2349,7 +2378,7 @@ const Players = {
             { k: 'weight', label: '体重 (kg)', type: 'number', ph: '75' },
             { k: 'foot', label: '利き足', type: 'seg', opts: [['', '—'], ['右', '右'], ['左', '左'], ['両', '両']] },
             { k: 'birth', label: '生年月日', type: 'date' },
-            { k: 'joinSeason', label: '加入シーズン', type: 'select', opts: seasonsRange(1990, 2050).reverse() },
+            { k: 'joinSeason', label: '加入シーズン', type: 'select', empty: '不明', opts: seasonsRange(1970, 2050).reverse() },
             { type: 'section', label: '契約情報' },
             { k: 'contract.currency', label: '通貨', type: 'select', opts: [['JPY', '￥ 円'], ['GBP', '£ ポンド'], ['EUR', '€ ユーロ'], ['USD', '$ ドル']] },
             { k: 'contract.salary', label: '年俸', type: 'number', ph: '例: 10000' },
@@ -2496,6 +2525,7 @@ route(/^\/players$/, () => {
           <button class="btn" data-act="afSquad">${ic('cloud')}API-Footballから取り込み</button>
           <button class="btn" data-act="csvPlayers">${ic('upload')}CSVで追加</button>
           <button class="btn" data-act="carryOver">前シーズンから引き継ぎ</button>
+          <button class="btn" data-act="joinDates">${ic('cloud')}加入時期をAPIで取得</button>
           <button class="btn ghost" data-act="csvExport">${ic('download')}CSV書き出し</button></div>
         <div class="row" style="margin-bottom:12px"><input class="input" data-search placeholder="名前・背番号で絞り込み…  ( / )" style="max-width:280px">
           <div class="seg">${['', ...POS4].map(p => `<a href="${qs({ pos: p })}" style="text-decoration:none"><button class="${posF === p ? 'on' : ''}">${p || 'すべて'} <span class="faint">${p ? ps.filter(x => x.pos === p).length : ps.length}</span></button></a>`).join('')}</div>
@@ -2515,7 +2545,7 @@ route(/^\/players$/, () => {
 const selectedPlayers = () => $$('[data-psel]:checked').map(c => c.dataset.psel);
 Object.assign(Actions, {
   newStaff: () => Staff.edit(), editStaff: a => Staff.edit(a.dataset.id),
-  afSquad: () => ApiImport.squadDialog(), csvPlayers: () => Players.csvDialog(), carryOver: () => Players.carryOver(), csvExport: () => Players.exportCSV(),
+  afSquad: () => ApiImport.squadDialog(), joinDates: () => ApiImport.joinDates(), csvPlayers: () => Players.csvDialog(), carryOver: () => Players.carryOver(), csvExport: () => Players.exportCSV(),
   pSort: a => { const q = App.query(); q.set('sort', a.dataset.k); go('/players?' + q); },
   bulkHide: () => { const ids = selectedPlayers(); Store.commit('一括非表示', () => ids.forEach(id => playerById(id).visible = false), { toast: `${ids.length}人を非表示にしました` }); },
   bulkShow: () => { const ids = selectedPlayers(); Store.commit('一括表示', () => ids.forEach(id => playerById(id).visible = true)); },
@@ -3410,25 +3440,28 @@ const sideOf = code => /^L/.test(code || '') ? 0 : /^R/.test(code || '') ? 2 : 1
 
 /* ---------- generic screenshot → AI → preview → apply dialog ---------- */
 const ShotDialog = {
-  open({ title, hint, read, preview, apply }) {
+  open({ title, hint, read, preview, apply, text = false }) {
     const md = UI.modal({
       title, cls: 'wide',
-      body: `<div class="notice">${hint}</div><div class="dropzone" data-dz>${ic('upload')} 画像を選択 / ドロップ / Ctrl+V で貼り付け（複数枚OK・スマホならカメラで撮影も可）<input type="file" accept="image/*" multiple hidden></div><div class="row" data-thumbs></div><div data-out></div>`,
+      body: `<div class="notice">${hint}</div>${text ? '<textarea class="input" rows="9" data-txt placeholder="ここに貼り付け（Ctrl+V）"></textarea>' : `<div class="dropzone" data-dz>${ic('upload')} 画像を選択 / ドロップ / Ctrl+V で貼り付け（複数枚OK・スマホならカメラで撮影も可）<input type="file" accept="image/*" multiple hidden></div><div class="row" data-thumbs></div>`}<div data-out></div>`,
       foot: `<span class="hint grow">${AI.provider() === 'gemini' ? 'Gemini（無料枠）' : 'Claude'}で読み取ります</span><button class="btn" data-read disabled>${ic('sparkle')}読み取る</button><button class="btn primary" data-apply disabled>反映する</button>`,
     });
     let files = [], res = null;
     const draw = () => { md.$('[data-thumbs]').innerHTML = files.map((f, i) => `<span style="position:relative;display:inline-block"><img src="${URL.createObjectURL(f)}" style="height:70px;border-radius:8px;display:block"><button class="btn xs" data-rm="${i}" style="position:absolute;top:3px;right:3px;min-height:0;padding:1px 6px">×</button></span>`).join(''); md.$('[data-read]').disabled = !files.length; };
     const add = fs => { files.push(...[...fs].filter(f => f.type.startsWith('image/'))); draw(); };
-    const dz = md.$('[data-dz]'), fi = $('input', dz);
-    dz.onclick = () => fi.click(); fi.onchange = () => { add(fi.files); fi.value = ''; };
-    dz.ondragover = e => { e.preventDefault(); dz.classList.add('drag'); }; dz.ondragleave = () => dz.classList.remove('drag');
-    dz.ondrop = e => { e.preventDefault(); dz.classList.remove('drag'); add(e.dataTransfer.files); };
-    md.el.addEventListener('paste', e => add(e.clipboardData.files));
-    md.$('[data-thumbs]').onclick = e => { const b = e.target.closest('[data-rm]'); if (b) { files.splice(+b.dataset.rm, 1); draw(); } };
+    if (text) { const ta = md.$('[data-txt]'); ta.oninput = () => md.$('[data-read]').disabled = ta.value.trim().length < 20; }
+    else {
+      const dz = md.$('[data-dz]'), fi = $('input', dz);
+      dz.onclick = () => fi.click(); fi.onchange = () => { add(fi.files); fi.value = ''; };
+      dz.ondragover = e => { e.preventDefault(); dz.classList.add('drag'); }; dz.ondragleave = () => dz.classList.remove('drag');
+      dz.ondrop = e => { e.preventDefault(); dz.classList.remove('drag'); add(e.dataTransfer.files); };
+      md.el.addEventListener('paste', e => add(e.clipboardData.files));
+      md.$('[data-thumbs]').onclick = e => { const b = e.target.closest('[data-rm]'); if (b) { files.splice(+b.dataset.rm, 1); draw(); } };
+    }
     md.$('[data-read]').onclick = async () => {
       const btn = md.$('[data-read]'); btn.disabled = true;
       md.$('[data-out]').innerHTML = `<div class="empty">${ic('sparkle')} 読み取り中…（10〜40秒）</div>`;
-      try { res = await read(files); md.$('[data-out]').innerHTML = preview(res); md.$('[data-apply]').disabled = false; }
+      try { res = await read(text ? md.$('[data-txt]').value : files); md.$('[data-out]').innerHTML = preview(res); md.$('[data-apply]').disabled = false; }
       catch (e) { md.$('[data-out]').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
       btn.disabled = false;
     };
@@ -3528,11 +3561,13 @@ const Ovr = {
     const h = (p.ovrHist || []).filter(x => x.ovr !== ''); if (h.length < 2) return '';
     return Chart.line([{ data: h.map(x => x.ovr), color: 'var(--accent)' }, ...(h.some(x => x.pot) ? [{ data: h.map(x => x.pot || x.ovr), color: '#94a3b8' }] : [])], { labels: h.map(x => x.season), h: 160, min: Math.max(0, Math.min(...h.map(x => x.ovr)) - 5), max: Math.min(99, Math.max(...h.map(x => x.pot || x.ovr)) + 3) });
   },
-  shot() {
+  shot(text = false) {
     ShotDialog.open({
-      title: '能力値をスクショから入力 (AI)',
-      hint: 'FC27キャリアモードの<b>スカッド画面</b>（選手名・OVR・POTが見える一覧）を撮って入れてください。複数枚OK。今シーズン（' + esc(curSeason()) + '）の能力値として記録します。',
-      read: files => AI.readSquad(files),
+      text,
+      title: text ? '能力値を貼り付けで入力 (AI)' : '能力値をスクショから入力 (AI)',
+      hint: text ? 'SoFIFA などの選手一覧ページで、表の部分をドラッグで選択してコピー（Ctrl+C）し、下に貼り付けてください。レイアウトが崩れていてもAIが選手名・OVR・POTを読み取ります。今シーズン（' + esc(curSeason()) + '）の能力値として記録します。'
+        : 'FC27キャリアモードの<b>スカッド画面</b>、または SoFIFA のチームページ（選手名・OVR・POTが見える一覧）のスクショを入れてください。複数枚OK。今シーズン（' + esc(curSeason()) + '）の能力値として記録します。',
+      read: x => text ? AI.readSquadText(x) : AI.readSquad(x),
       preview: r => `<div class="card flush tbl-wrap"><table class="tbl"><thead><tr><th>読み取り</th><th>登録選手</th><th class="num">OVR</th><th class="num">POT</th><th class="num">年齢</th><th>Pos</th></tr></thead><tbody>${(r.players || []).map(x => { const id = matchPlayer(x.name, curSeason()); return `<tr><td>${esc(x.name)}</td><td>${id ? `<b>${esc(pname(id))}</b>` : '<span style="color:var(--warn)">新規 ⚠</span>'}</td><td class="num"><b>${esc(x.ovr ?? '')}</b></td><td class="num">${esc(x.pot ?? '')}</td><td class="num">${esc(x.age ?? '')}</td><td>${esc(x.pos ?? '')}</td></tr>`; }).join('')}</tbody></table></div><label class="row small" style="gap:6px;margin-top:8px"><input type="checkbox" data-o="addNew">一致しない選手を新規登録する（ユース昇格・新加入など）</label>`,
       apply: (r, o) => {
         let n = 0, a = 0;
@@ -3712,7 +3747,7 @@ Object.assign(Actions, {
   objAdd: () => Objectives.edit(), objEdit: a => Objectives.edit(a.dataset.id),
   objCycle: (a, e) => { e.stopPropagation(); const o = C().objectives.find(x => x.id === a.dataset.id); Store.commit('目標状況', () => o.status = { prog: 'done', done: 'fail', fail: 'prog' }[o.status]); },
   extend: async (a, e) => { e.stopPropagation(); const p = playerById(a.dataset.id); const y = await UI.prompt(`${p.name} の新しい契約満了年`, String(parseInt(p.contract.until) + 2), { ph: '2030' }); if (y && /^\d{4}$/.test(y)) Store.commit('契約延長', () => p.contract.until = `${y}-06`, { toast: `${p.name} と ${y}年6月まで契約延長` }); },
-  nextSeason: () => Season.next(), ovrShot: () => Ovr.shot(),
+  nextSeason: () => Season.next(), ovrShot: () => Ovr.shot(), ovrPaste: () => Ovr.shot(true),
   tableShot: a => tableShot(a.dataset.id),
 });
 
@@ -3723,7 +3758,7 @@ function ovrTab() {
   const top = rows.filter(r => r.d != null).sort((a, b) => b.d - a.d).slice(0, 5);
   const row = ({ p, cur, prev, d }) => `<tr><td>${esc(p.number ?? '')}</td><td><span class="row nowrap" style="gap:8px">${avatar(p, 'sm')}<b>${esc(p.name)}</b></span></td><td><span class="pos ${p.pos}">${p.pos}</span></td><td class="num hide-sm">${ageOf(p.birth, at) ?? ''}</td><td class="num faint">${prev?.ovr ?? '—'}</td>
     <td><input class="input sm num" inputmode="numeric" data-ovr="${p.id}" data-k="ovr" value="${esc(cur?.ovr ?? '')}"></td><td><input class="input sm num" inputmode="numeric" data-ovr="${p.id}" data-k="pot" value="${esc(cur?.pot ?? '')}"></td><td class="num" data-delta="${p.id}">${Ovr.chip(d)}</td></tr>`;
-  return `<div class="row" style="margin-bottom:12px"><button class="btn primary" data-act="ovrShot">${ic('sparkle')}スカッド画面のスクショから記録</button><span class="hint">または下の表に直接入力（Tabで次へ）。${esc(s)}シーズンの値として保存されます。</span></div>
+  return `<div class="row" style="margin-bottom:12px"><button class="btn primary" data-act="ovrShot">${ic('sparkle')}スクショから記録</button><button class="btn" data-act="ovrPaste">${ic('copy')}SoFIFA等の表を貼り付けて記録</button><span class="hint">または下の表に直接入力（Tabで次へ）。${esc(s)}シーズンの値として保存されます。</span></div>
     ${top.length ? `<div class="card" style="margin-bottom:14px"><h3>📈 今季の成長 TOP${top.length}</h3><div class="row" style="gap:16px">${top.map(r => `<div class="row nowrap" style="gap:8px">${avatar(r.p, 'sm')}<div><b class="small">${esc(r.p.name)}</b><div class="small faint">${r.prev.ovr} → ${r.cur.ovr} ${Ovr.chip(r.d)}</div></div></div>`).join('')}</div></div>` : ''}
     ${ps.length ? `<div class="card flush tbl-wrap"><table class="tbl" data-ovrtbl><thead><tr><th>#</th><th>選手</th><th>Pos</th><th class="num hide-sm">年齢</th><th class="num">前季</th><th>OVR</th><th>POT</th><th class="num">増減</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>` : '<div class="card empty"><b>今シーズンの選手がいません</b></div>'}`;
 }
