@@ -819,6 +819,7 @@ function zoneOf(comp, rank, total) {
   const z = comp.zones || {};
   if (z.top1 && rank <= num(z.top1)) return { c: '#3b82f6', t: z.top1Label || '上位' };
   if (z.top2 && rank <= num(z.top1) + num(z.top2)) return { c: '#f59e0b', t: z.top2Label || '' };
+  if (z.top3 && rank <= num(z.top1) + num(z.top2) + num(z.top3)) return { c: '#10b981', t: z.top3Label || '' };
   if (z.bottom && rank > total - num(z.bottom)) return { c: '#ef4444', t: z.bottomLabel || '降格' };
   return null;
 }
@@ -1082,7 +1083,7 @@ const Site = {
     },
     table() {
       const c = C(), s = this.season(), ks = c.competitions.filter(k => k.season === s && k.format !== 'cup' && k.showTable !== false);
-      return `${this.sh('TABLE', '順位表')}<div class="s-filter">${this.seasonSel()}</div>${ks.length ? ks.map(k => `<section class="s-sec"><h3 style="margin:0 0 10px">${esc(k.name)}</h3><div class="s-card">${this.table(k)}</div><div class="s-clubs">${standings(k).map(r => r.id === own() ? '' : `<a href="${this.link('/team/' + r.id)}" title="${esc(teamName(r.id))}">${this.crest(teamById(r.id), 'lg')}<small>${esc(teamName(r.id))}</small></a>`).join('')}</div><div style="display:flex;gap:14px;margin-top:8px;font-size:12px;color:var(--muted)">${[['top1', '#3b82f6'], ['top2', '#f59e0b'], ['bottom', '#ef4444']].filter(([z]) => num(k.zones?.[z])).map(([z, col]) => `<span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${col};margin-right:5px"></i>${esc(k.zones[z + 'Label'] || '')}</span>`).join('')}</div></section>`).join('') : '<div class="s-empty">順位表はまだありません</div>'}`;
+      return `${this.sh('TABLE', '順位表')}<div class="s-filter">${this.seasonSel()}</div>${ks.length ? ks.map(k => `<section class="s-sec"><h3 style="margin:0 0 10px">${esc(k.name)}</h3><div class="s-card">${this.table(k)}</div><div class="s-clubs">${standings(k).map(r => r.id === own() ? '' : `<a href="${this.link('/team/' + r.id)}" title="${esc(teamName(r.id))}">${this.crest(teamById(r.id), 'lg')}<small>${esc(teamName(r.id))}</small></a>`).join('')}</div><div style="display:flex;gap:14px;margin-top:8px;font-size:12px;color:var(--muted)">${[['top1', '#3b82f6'], ['top2', '#f59e0b'], ['top3', '#10b981'], ['bottom', '#ef4444']].filter(([z]) => num(k.zones?.[z])).map(([z, col]) => `<span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${col};margin-right:5px"></i>${esc(k.zones[z + 'Label'] || '')}</span>`).join('')}</div></section>`).join('') : '<div class="s-empty">順位表はまだありません</div>'}`;
     },
     stats() {
       const s = this.season(), ms = matchesFor({ season: s, done: true }), r = teamRecord(ms), lg = ms.filter(m => compById(m.compId)?.format === 'league');
@@ -2526,7 +2527,7 @@ Object.assign(Actions, {
 const CUP_ROUNDS = ['グループステージ', 'プレーオフ', '1回戦', '2回戦', '3回戦', '4回戦', 'ラウンド32', 'ラウンド16', '準々決勝', '準決勝', '3位決定戦', '決勝'];
 const Comps = {
   edit(id) {
-    const c = C(), k = id ? compById(id) : { season: curSeason(), format: 'league', rounds: '', teamIds: [own()], zones: { top1: '', top1Label: 'CL', top2: '', top2Label: 'EL', bottom: '', bottomLabel: '降格' }, showTable: true };
+    const c = C(), k = id ? compById(id) : { season: curSeason(), format: 'league', rounds: '', teamIds: [own()], zones: { top1: '', top1Label: 'CL', top2: '', top2Label: 'EL', top3: '', top3Label: 'ECL', bottom: '', bottomLabel: '降格' }, showTable: true };
     const names = [...new Set(c.competitions.map(x => x.name))];
     const teamOpts = () => c.teams.slice().sort((a, b) => (b.id === own()) - (a.id === own()) || a.name.localeCompare(b.name)).map(t => [t.id, t.name, crest(t)]);
     UI.form({
@@ -2547,6 +2548,8 @@ const Comps = {
         { k: 'zones.top1Label', label: 'ラベル', ph: 'CL出場', show: v => v.format !== 'cup' },
         { k: 'zones.top2', label: '上位ゾーン2 チーム数', type: 'number', ph: '2', show: v => v.format !== 'cup' },
         { k: 'zones.top2Label', label: 'ラベル', ph: 'EL出場', show: v => v.format !== 'cup' },
+        { k: 'zones.top3', label: '上位ゾーン3 チーム数', type: 'number', ph: '1', show: v => v.format !== 'cup' },
+        { k: 'zones.top3Label', label: 'ラベル', ph: 'ECL出場', show: v => v.format !== 'cup' },
         { k: 'zones.bottom', label: '降格 チーム数', type: 'number', ph: '3', show: v => v.format !== 'cup' },
         { k: 'zones.bottomLabel', label: 'ラベル', ph: '降格', show: v => v.format !== 'cup' },
       ],
@@ -2681,7 +2684,7 @@ route(/^\/competitions\/([\w]+)$/, id => {
       <div class="actions"><button class="btn" data-act="editComp" data-id="${id}">${ic('edit')}設定</button>${k.format !== 'cup' ? `<button class="btn" data-act="genFix" data-id="${id}">日程を自動生成</button>` : ''}<button class="btn primary" data-act="newCompMatch" data-id="${id}" data-new>${ic('plus')}試合を追加</button></div></div>
     <div class="tabs"><a href="#/competitions/${id}" class="${tab === 'fixtures' ? 'on' : ''}">日程・結果<span class="cnt">${ms.length}</span></a>${k.format !== 'cup' ? `<a href="#/competitions/${id}?tab=table" class="${tab === 'table' ? 'on' : ''}">順位表</a>` : ''}</div>
     ${tab === 'table' ? `<div class="row" style="margin-bottom:12px"><button class="btn" data-act="tableShot" data-id="${id}">${ic('sparkle')}スクショから読み取り</button><button class="btn" data-act="manualTable" data-id="${id}">${ic('edit')}順位表を手入力・補正</button><span class="hint">試合結果から自動計算＋手入力の補正値</span></div><div class="card flush">${tableHTML(k)}</div>
-      <div class="legend" style="margin-top:10px">${[['top1', '#3b82f6'], ['top2', '#f59e0b'], ['bottom', '#ef4444']].filter(([z]) => num(k.zones?.[z])).map(([z, col]) => `<span><i style="background:${col}"></i>${esc(k.zones[z + 'Label'] || '')}</span>`).join('')}</div>`
+      <div class="legend" style="margin-top:10px">${[['top1', '#3b82f6'], ['top2', '#f59e0b'], ['top3', '#10b981'], ['bottom', '#ef4444']].filter(([z]) => num(k.zones?.[z])).map(([z, col]) => `<span><i style="background:${col}"></i>${esc(k.zones[z + 'Label'] || '')}</span>`).join('')}</div>`
       : ms.length ? `<div class="row" style="margin-bottom:10px"><span class="hint">未消化の試合はスコア欄に直接入力できます（両方入れると「試合終了」で保存）</span>${firstOpen ? `<a class="btn sm" href="#rnd-${encodeURIComponent(firstOpen)}" data-act="jumpRound" data-r="${esc(firstOpen)}">次の未消化節へ</a>` : ''}</div>
         <div class="card flush">${rnds.map(r => `<div class="round-h" id="rnd-${esc(r)}">${esc(r)}<span class="faint">${fmtDate(groups[r][0].date, { wd: true })}</span></div>${groups[r].map(m => matchRow(m, { quick: true, noComp: true })).join('')}`).join('')}</div>`
       : `<div class="card empty"><b>試合がありません</b>${k.format !== 'cup' ? '総当たり日程を自動生成できます' : 'カップ戦の試合を追加しましょう'}<div class="row" style="justify-content:center;margin-top:12px">${k.format !== 'cup' ? `<button class="btn primary" data-act="genFix" data-id="${id}">日程を自動生成</button>` : ''}<button class="btn" data-act="newCompMatch" data-id="${id}">試合を追加</button></div></div>`}`,
@@ -3734,21 +3737,22 @@ document.addEventListener('change', e => {
 
 /* ===== create a whole league competition from API-Football in one go ===== */
 // id, name, country, relegated, [zone1 count, label], [zone2 count, label]
+// id, name, country, relegated, [zone1], [zone2], [zone3]  (approximate; editable when creating)
 const LEAGUES = [
-  [39, 'Premier League', 'イングランド', 3, [4, 'CL'], [1, 'EL']],
-  [140, 'La Liga', 'スペイン', 3, [4, 'CL'], [2, 'EL']],
-  [135, 'Serie A', 'イタリア', 3, [4, 'CL'], [2, 'EL']],
-  [78, 'Bundesliga', 'ドイツ', 2, [4, 'CL'], [2, 'EL']],
-  [61, 'Ligue 1', 'フランス', 2, [3, 'CL'], [1, 'EL']],
-  [88, 'Eredivisie', 'オランダ', 2, [2, 'CL'], [1, 'EL']],
-  [94, 'Primeira Liga', 'ポルトガル', 2, [2, 'CL'], [1, 'EL']],
-  [40, 'Championship', 'イングランド2部', 3, [2, '自動昇格'], [4, '昇格PO']],
-  [98, 'J1 League', '日本', 3, [3, 'ACL'], [0, '']],
-  [253, 'Major League Soccer', 'アメリカ', 0, [0, ''], [0, '']],
-  [307, 'Saudi Pro League', 'サウジアラビア', 3, [2, 'ACL'], [0, '']],
-  [144, 'Jupiler Pro League', 'ベルギー', 2, [1, 'CL'], [1, 'EL']],
-  [179, 'Premiership', 'スコットランド', 1, [1, 'CL'], [1, 'EL']],
-  [203, 'Süper Lig', 'トルコ', 3, [1, 'CL'], [1, 'EL']],
+  [39, 'Premier League', 'イングランド', 3, [4, 'CL'], [1, 'EL'], [1, 'ECL']],
+  [140, 'La Liga', 'スペイン', 3, [4, 'CL'], [2, 'EL'], [1, 'ECL']],
+  [135, 'Serie A', 'イタリア', 3, [4, 'CL'], [2, 'EL'], [1, 'ECL']],
+  [78, 'Bundesliga', 'ドイツ', 2, [4, 'CL'], [2, 'EL'], [1, 'ECL']],
+  [61, 'Ligue 1', 'フランス', 2, [3, 'CL'], [1, 'EL'], [1, 'ECL']],
+  [88, 'Eredivisie', 'オランダ', 2, [2, 'CL'], [1, 'EL'], [1, 'ECL']],
+  [94, 'Primeira Liga', 'ポルトガル', 2, [2, 'CL'], [1, 'EL'], [1, 'ECL']],
+  [40, 'Championship', 'イングランド2部', 3, [2, '自動昇格'], [4, '昇格PO'], [0, '']],
+  [98, 'J1 League', '日本', 3, [3, 'ACL'], [0, ''], [0, '']],
+  [253, 'Major League Soccer', 'アメリカ', 0, [0, ''], [0, ''], [0, '']],
+  [307, 'Saudi Pro League', 'サウジアラビア', 3, [2, 'ACL'], [0, ''], [0, '']],
+  [144, 'Jupiler Pro League', 'ベルギー', 2, [1, 'CL'], [1, 'EL'], [1, 'ECL']],
+  [179, 'Premiership', 'スコットランド', 1, [1, 'CL'], [1, 'EL'], [1, 'ECL']],
+  [203, 'Süper Lig', 'トルコ', 3, [1, 'CL'], [1, 'EL'], [1, 'ECL']],
 ];
 const leagueLogo = id => `https://media.api-sports.io/football/leagues/${id}.png`;
 
@@ -3796,7 +3800,7 @@ const LeagueImport = {
     const c = C(), ownT = teamById(own());
     const ownApi = res.teams.find(r => (ownT.apiId && String(r.team.id) === String(ownT.apiId)) || normName(r.team.name) === normName(ownT.name));
     const exists = r => c.teams.find(t => (t.apiId && String(t.apiId) === String(r.team.id)) || normName(t.name) === normName(r.team.name));
-    const P = lg.preset || [lg.id, lg.name, '', 3, [4, 'CL'], [0, '']];
+    const P = lg.preset || [lg.id, lg.name, '', 3, [4, 'CL'], [1, 'EL'], [1, 'ECL']];
     const n = res.teams.length + (ownApi ? 0 : 1);
     UI.form({
       title: `${lg.name} の大会を作成`, cls: 'wide', saveLabel: '大会を作成',
@@ -3805,11 +3809,15 @@ const LeagueImport = {
         { k: 'name', label: '大会名', req: true, cls: 'span2' },
         { k: 'season', label: 'シーズン', type: 'select', opts: seasonsRange(1990, 2050).reverse() },
         { k: 'teamIds', label: `参加チーム（${n}）`, type: 'checks', cls: 'full', filter: true, opts: [[own(), `${ownT.name}（自分のクラブ）`, crest(ownT)], ...res.teams.filter(r => r !== ownApi).map(r => [String(r.team.id), r.team.name + (exists(r) ? '（登録済み）' : ''), `<img class="crest" src="${esc(r.team.logo)}">`])] },
-        { k: 'top1', label: `${P[4][1] || '上位'}圏 チーム数`, type: 'number' }, { k: 'top2', label: `${P[5][1] || '上位2'}圏 チーム数`, type: 'number' }, { k: 'bottom', label: '降格 チーム数', type: 'number' },
+        { type: 'section', label: '順位表の色分け', hint: 'ゲーム内の出場枠に合わせて変えられます（作成後も大会の「設定」で変更可）' },
+        { k: 'top1', label: '上位ゾーン1（青）チーム数', type: 'number' }, { k: 'top1Label', label: 'ラベル' },
+        { k: 'top2', label: '上位ゾーン2（橙）チーム数', type: 'number' }, { k: 'top2Label', label: 'ラベル' },
+        { k: 'top3', label: '上位ゾーン3（緑）チーム数', type: 'number' }, { k: 'top3Label', label: 'ラベル' },
+        { k: 'bottom', label: '降格（赤）チーム数', type: 'number' },
         { k: 'fixtures', label: '日程（自チームの試合）も自動生成', type: 'toggle' },
         { k: 'start', label: '開幕日', type: 'date', show: v => v.fixtures },
       ],
-      value: { name: lg.name, season: curSeason(), teamIds: [own(), ...res.teams.filter(r => r !== ownApi).map(r => String(r.team.id))], top1: P[4][0] || '', top2: P[5][0] || '', bottom: P[3] || '', fixtures: true, start: `${parseInt(curSeason())}-08-15` },
+      value: { name: lg.name, season: curSeason(), teamIds: [own(), ...res.teams.filter(r => r !== ownApi).map(r => String(r.team.id))], top1: P[4][0] || '', top1Label: P[4][1] || 'CL', top2: P[5][0] || '', top2Label: P[5][1] || 'EL', top3: P[6]?.[0] || '', top3Label: P[6]?.[1] || 'ECL', bottom: P[3] || '', fixtures: true, start: `${parseInt(curSeason())}-08-15` },
       onSave: v => {
         const nid = uid(); let made = 0;
         Store.commit(`${v.name} を作成`, c => {
@@ -3822,7 +3830,7 @@ const LeagueImport = {
             return t.id;
           });
           const k = { id: nid, name: v.name, season: v.season, format: 'league', logo: lg.logo, apiLeague: lg.id, rounds: (ids.length - 1) * 2, teamIds: ids, showTable: true, adjust: {},
-            zones: { top1: v.top1, top1Label: P[4][1] || '上位', top2: v.top2, top2Label: P[5][1] || '', bottom: v.bottom, bottomLabel: '降格' } };
+            zones: { top1: v.top1, top1Label: v.top1Label, top2: v.top2, top2Label: v.top2Label, top3: v.top3, top3Label: v.top3Label, bottom: v.bottom, bottomLabel: '降格' } };
           c.competitions.push(k);
           if (v.fixtures && ids.length > 1) { const ms = Comps.makeFixtures(k, { start: v.start, interval: 7, time: '15:00', double: true, ownOnly: true }); c.matches.push(...ms); made = ms.length; }
         }, { toast: `${v.name} を作成しました${made ? `（${made}試合の日程付き）` : ''}` });
