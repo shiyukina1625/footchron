@@ -339,6 +339,7 @@ function zoneOf(comp, rank, total) {
   const z = comp.zones || {};
   if (z.top1 && rank <= num(z.top1)) return { c: '#3b82f6', t: z.top1Label || '上位' };
   if (z.top2 && rank <= num(z.top1) + num(z.top2)) return { c: '#f59e0b', t: z.top2Label || '' };
+  if (z.top3 && rank <= num(z.top1) + num(z.top2) + num(z.top3)) return { c: '#10b981', t: z.top3Label || '' };
   if (z.bottom && rank > total - num(z.bottom)) return { c: '#ef4444', t: z.bottomLabel || '降格' };
   return null;
 }
@@ -602,7 +603,7 @@ const Site = {
     },
     table() {
       const c = C(), s = this.season(), ks = c.competitions.filter(k => k.season === s && k.format !== 'cup' && k.showTable !== false);
-      return `${this.sh('TABLE', '順位表')}<div class="s-filter">${this.seasonSel()}</div>${ks.length ? ks.map(k => `<section class="s-sec"><h3 style="margin:0 0 10px">${esc(k.name)}</h3><div class="s-card">${this.table(k)}</div><div class="s-clubs">${standings(k).map(r => r.id === own() ? '' : `<a href="${this.link('/team/' + r.id)}" title="${esc(teamName(r.id))}">${this.crest(teamById(r.id), 'lg')}<small>${esc(teamName(r.id))}</small></a>`).join('')}</div><div style="display:flex;gap:14px;margin-top:8px;font-size:12px;color:var(--muted)">${[['top1', '#3b82f6'], ['top2', '#f59e0b'], ['bottom', '#ef4444']].filter(([z]) => num(k.zones?.[z])).map(([z, col]) => `<span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${col};margin-right:5px"></i>${esc(k.zones[z + 'Label'] || '')}</span>`).join('')}</div></section>`).join('') : '<div class="s-empty">順位表はまだありません</div>'}`;
+      return `${this.sh('TABLE', '順位表')}<div class="s-filter">${this.seasonSel()}</div>${ks.length ? ks.map(k => `<section class="s-sec"><h3 style="margin:0 0 10px">${esc(k.name)}</h3><div class="s-card">${this.table(k)}</div><div class="s-clubs">${standings(k).map(r => r.id === own() ? '' : `<a href="${this.link('/team/' + r.id)}" title="${esc(teamName(r.id))}">${this.crest(teamById(r.id), 'lg')}<small>${esc(teamName(r.id))}</small></a>`).join('')}</div><div style="display:flex;gap:14px;margin-top:8px;font-size:12px;color:var(--muted)">${[['top1', '#3b82f6'], ['top2', '#f59e0b'], ['top3', '#10b981'], ['bottom', '#ef4444']].filter(([z]) => num(k.zones?.[z])).map(([z, col]) => `<span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${col};margin-right:5px"></i>${esc(k.zones[z + 'Label'] || '')}</span>`).join('')}</div></section>`).join('') : '<div class="s-empty">順位表はまだありません</div>'}`;
     },
     stats() {
       const s = this.season(), ms = matchesFor({ season: s, done: true }), r = teamRecord(ms), lg = ms.filter(m => compById(m.compId)?.format === 'league');
