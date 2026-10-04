@@ -2680,13 +2680,13 @@ route(/^\/competitions\/([\w]+)$/, id => {
     title: k.name,
     html: `<a class="crumb" href="#/competitions">${ic('chevL')}大会管理</a>
     <div class="ph"><div class="row nowrap">${k.logo ? `<img class="crest lg" src="${esc(src(k.logo))}">` : ''}<div><h1>${esc(k.name)}</h1><p>${esc(k.season)} ・ ${FORMATS[k.format]} ・ ${(k.teamIds || []).length}チーム</p></div></div>
-      <div class="actions"><button class="btn" data-act="editComp" data-id="${id}">${ic('edit')}設定</button>${k.format !== 'cup' ? `<button class="btn" data-act="genFix" data-id="${id}">日程を自動生成</button>` : ''}<button class="btn primary" data-act="newCompMatch" data-id="${id}" data-new>${ic('plus')}試合を追加</button></div></div>
+      <div class="actions"><button class="btn" data-act="editComp" data-id="${id}">${ic('edit')}設定</button>${k.format !== 'cup' ? `<button class="btn" data-act="genFix" data-id="${id}">日程を自動生成</button>` : ''}${ms.some(m => !isDone(m)) ? `<button class="btn danger" data-act="delPending" data-comp="${id}">未消化の試合を削除</button>` : ''}<button class="btn primary" data-act="newCompMatch" data-id="${id}" data-new>${ic('plus')}試合を追加</button></div></div>
     <div class="tabs"><a href="#/competitions/${id}" class="${tab === 'fixtures' ? 'on' : ''}">日程・結果<span class="cnt">${ms.length}</span></a>${k.format !== 'cup' ? `<a href="#/competitions/${id}?tab=table" class="${tab === 'table' ? 'on' : ''}">順位表</a>` : ''}</div>
     ${tab === 'table' ? `<div class="row" style="margin-bottom:12px"><button class="btn" data-act="tableShot" data-id="${id}">${ic('sparkle')}スクショから読み取り</button><button class="btn" data-act="manualTable" data-id="${id}">${ic('edit')}順位表を手入力・補正</button><span class="hint">試合結果から自動計算＋手入力の補正値</span></div><div class="card flush">${tableHTML(k)}</div>
       <div class="legend" style="margin-top:10px">${[['top1', '#3b82f6'], ['top2', '#f59e0b'], ['top3', '#10b981'], ['bottom', '#ef4444']].filter(([z]) => num(k.zones?.[z])).map(([z, col]) => `<span><i style="background:${col}"></i>${esc(k.zones[z + 'Label'] || '')}</span>`).join('')}</div>`
       : ms.length ? `<div class="row" style="margin-bottom:10px"><span class="hint">未消化の試合はスコア欄に直接入力できます（両方入れると「試合終了」で保存）</span>${firstOpen ? `<a class="btn sm" href="#rnd-${encodeURIComponent(firstOpen)}" data-act="jumpRound" data-r="${esc(firstOpen)}">次の未消化節へ</a>` : ''}</div>
         <div class="card flush">${rnds.map(r => `<div class="round-h" id="rnd-${esc(r)}">${esc(r)}<span class="faint">${fmtDate(groups[r][0].date, { wd: true })}</span></div>${groups[r].map(m => matchRow(m, { quick: true, noComp: true })).join('')}`).join('')}</div>`
-      : `<div class="card empty"><b>試合がありません</b>${k.format !== 'cup' ? '総当たり日程を自動生成できます' : 'カップ戦の試合を追加しましょう'}<div class="row" style="justify-content:center;margin-top:12px">${k.format !== 'cup' ? `<button class="btn primary" data-act="genFix" data-id="${id}">日程を自動生成</button>` : ''}<button class="btn" data-act="newCompMatch" data-id="${id}">試合を追加</button></div></div>`}`,
+      : `<div class="card empty"><b>試合がありません</b>${k.format !== 'cup' ? '総当たり日程を自動生成できます' : 'カップ戦の試合を追加しましょう'}<div class="row" style="justify-content:center;margin-top:12px">${k.format !== 'cup' ? `<button class="btn primary" data-act="genFix" data-id="${id}">日程を自動生成</button>` : ''}${ms.some(m => !isDone(m)) ? `<button class="btn danger" data-act="delPending" data-comp="${id}">未消化の試合を削除</button>` : ''}<button class="btn" data-act="newCompMatch" data-id="${id}">試合を追加</button></div></div>`}`,
   };
 });
 Object.assign(Actions, {
@@ -2783,7 +2783,7 @@ route(/^\/matches$/, () => {
   const comps = c.competitions.filter(k => k.season === curSeason());
   return {
     title: '試合管理',
-    html: `<div class="ph"><div><h1>試合管理</h1><p>${esc(curSeason())} シーズンの公式戦・単発試合</p></div><div class="actions"><button class="btn" data-act="newFriendly">${ic('hand')}単発試合</button><button class="btn primary" data-act="newMatch" data-new>${ic('plus')}試合を作成 <span class="kbd">N</span></button></div></div>
+    html: `<div class="ph"><div><h1>試合管理</h1><p>${esc(curSeason())} シーズンの公式戦・単発試合</p></div><div class="actions">${counts.upcoming ? `<button class="btn danger" data-act="delPending" data-comp="${comp && comp !== '__friendly' ? comp : ''}">未消化の試合を削除</button>` : ''}<button class="btn" data-act="newFriendly">${ic('hand')}単発試合</button><button class="btn primary" data-act="newMatch" data-new>${ic('plus')}試合を作成 <span class="kbd">N</span></button></div></div>
     <div class="row" style="margin-bottom:12px">
       <div class="seg">${[['all', 'すべて'], ['upcoming', '予定'], ['done', '結果'], ['pending', '結果未入力']].map(([k, l]) => `<a href="${qs({ f: k })}"><button class="${f === k ? 'on' : ''}">${l} <span class="faint">${counts[k]}</span></button></a>`).join('')}</div>
       <select class="input sm" style="width:auto" onchange="location.hash='${qs({ comp: '' }).slice(1)}'.replace(/comp=[^&]*/,'comp='+this.value)">${opt('', 'すべての大会', comp)}${comps.map(k => opt(k.id, k.name, comp)).join('')}${opt('__friendly', '単発試合', comp)}</select></div>
@@ -3914,6 +3914,18 @@ const QuickFix = {
 };
 Actions.newMatch = () => QuickFix.open();
 Actions.newCompMatch = a => QuickFix.open({ compId: a.dataset.id });
+
+/* delete every not-yet-played match (of one competition, or the whole current season) */
+Actions.delPending = async a => {
+  const compId = a.dataset.comp || '';
+  const list = C().matches.filter(m => !isDone(m) && (compId ? m.compId === compId : m.season === curSeason()));
+  if (!list.length) return UI.toast('未消化の試合はありません');
+  const withData = list.filter(m => (m.events || []).length || (m.lineup?.starters || []).some(s => s.pid)).length;
+  const where = compId ? compById(compId)?.name : `${curSeason()} シーズン`;
+  if (!await UI.confirm(`${where} の未消化の試合 ${list.length} 件を削除しますか？`, { ok: `${list.length}件を削除`, sub: `結果を入力済みの試合は消えません。${withData ? `メンバーやイベントだけ入力済みの試合が ${withData} 件含まれます。` : ''}間違えた場合は「元に戻す」(Ctrl+Z) で戻せます。` })) return;
+  const ids = new Set(list.map(m => m.id));
+  Store.commit(`未消化${list.length}件を削除`, c => c.matches = c.matches.filter(m => !ids.has(m.id)), { toast: `${list.length}件の試合を削除しました` });
+};
 
 /* ===== standalone public-site export ===== */
 // captured before the first render replaces <body> (where the script tags live)
