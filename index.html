@@ -1606,7 +1606,7 @@ const Palette = {
     const c = C(), out = [];
     NAV.flatMap(g => g.items).forEach(n => out.push({ group: 'ページ', label: n.label, icon: n.icon, kw: n.kw, run: () => go(n.path) }));
     [['新しい試合を作成', () => Matches.create(), 'plus', 'match add'], ['選手を追加', () => Players.edit(), 'plus', 'player add'], ['ニュースを書く', () => News.edit(), 'plus', 'news'], ['次のシーズンへ', () => Season.next(), 'cal', 'season next 新シーズン'], ['能力値をスクショから記録', () => Ovr.shot(), 'sparkle', 'ovr pot 能力値'], ['シーズン表彰', () => go('/awards'), 'trophy', 'awards mvp'],
-     ['大会を作成', () => Comps.edit(), 'plus', 'competition'], ['チームを追加', () => Teams.edit(), 'plus', 'team'], ['移籍を記録', () => Transfers.edit(), 'plus', 'transfer'],
+     ['大会を作成', () => Comps.edit(), 'plus', 'competition'], ['リーグから大会を自動作成 (API)', () => LeagueImport.open(), 'cloud', 'league api premier laliga 自動'], ['チームを追加', () => Teams.edit(), 'plus', 'team'], ['移籍を記録', () => Transfers.edit(), 'plus', 'transfer'],
      ['API-Footballから選手を取り込み', () => ApiImport.squadDialog(), 'cloud', 'api squad import'], ['API-Footballからチーム検索', () => ApiImport.teamDialog(), 'cloud', 'api team'],
      ['バックアップを書き出す (JSON)', () => Settings.backup(), 'download', 'export backup'], ['公開サイトをHTML書き出し', () => SiteExport.run(), 'download', 'export html'],
      ['公開ページを見る', () => go('/site'), 'eye', 'hp public site'], ['テーマ切替 (ダーク/ライト)', () => App.toggleTheme(), 'moon', 'theme dark light'], ['元に戻す', () => Store.doUndo(), 'undo', 'undo']]
@@ -2059,7 +2059,7 @@ route(/^\/$/, () => {
   const noLogo = c.teams.filter(t => !t.logo && t.id !== own()).length;
   if (noLogo && DB.settings.apiFootballKey) todo.push([`エンブレム未設定のチームが ${noLogo} 件あります`, '/teams', '「エンブレムを一括取得」でまとめて入ります']);
   if (!playersOf().length) todo.push(['選手を登録（API取り込み / CSV / 手入力）', '/players', '']);
-  if (!c.competitions.some(x => x.season === s)) todo.push(['今シーズンの大会を作成', '/competitions', 'リーグ戦なら日程も自動生成できます']);
+  if (!c.competitions.some(x => x.season === s)) todo.push(['今シーズンの大会を作成', '/competitions', '「リーグから自動作成」なら参加チーム・エンブレム・日程まで一発です']);
   const pend = ms.filter(m => !isDone(m) && m.date && m.date < today());
   if (pend.length) todo.push([`結果未入力の試合が ${pend.length} 件あります`, '/matches?f=pending', '試合後スクショを入れるだけで入力できます']);
   const over = Season.isOver(s);
@@ -2659,12 +2659,12 @@ route(/^\/competitions$/, () => {
   const list = c.competitions.filter(k => all || k.season === curSeason()).sort(by(k => k.season, -1));
   return {
     title: '大会管理',
-    html: `<div class="ph"><div><h1>大会管理</h1><p>大会の日程・結果・順位表を管理</p></div><div class="actions"><div class="seg"><a href="#/competitions"><button class="${all ? '' : 'on'}">${esc(curSeason())}</button></a><a href="#/competitions?all=1"><button class="${all ? 'on' : ''}">すべてのシーズン</button></a></div><button class="btn primary" data-act="newComp" data-new>${ic('plus')}大会を追加</button></div></div>
+    html: `<div class="ph"><div><h1>大会管理</h1><p>大会の日程・結果・順位表を管理</p></div><div class="actions"><div class="seg"><a href="#/competitions"><button class="${all ? '' : 'on'}">${esc(curSeason())}</button></a><a href="#/competitions?all=1"><button class="${all ? 'on' : ''}">すべてのシーズン</button></a></div><button class="btn" data-act="leagueImport">${ic('cloud')}リーグから自動作成</button><button class="btn primary" data-act="newComp" data-new>${ic('plus')}大会を追加</button></div></div>
     ${list.length ? `<div class="grid g3">${list.map(k => { const ms = c.matches.filter(m => m.compId === k.id), d = ms.filter(isDone).length; const me = k.format !== 'cup' ? standings(k).find(r => r.id === own()) : null; return `<a class="card" href="#/competitions/${k.id}" style="text-decoration:none;display:flex;flex-direction:column;gap:10px">
       <div class="row nowrap">${k.logo ? `<img class="crest md" src="${esc(src(k.logo))}">` : `<span class="crest md">${ic('trophy')}</span>`}<div class="grow" style="min-width:0"><b class="ell" style="display:block">${esc(k.name)}</b><span class="small muted">${esc(k.season)} ・ ${FORMATS[k.format]}</span></div></div>
       <div class="row small muted" style="gap:14px"><span>${(k.teamIds || []).length}チーム</span><span>${d}/${ms.length}試合 消化</span>${me ? `<span class="chip green">${me.rank}位 ・ 勝点${me.pts}</span>` : ''}</div>
       <div class="bar"><i style="width:${ms.length ? d / ms.length * 100 : 0}%"></i></div></a>`; }).join('')}</div>`
-      : `<div class="card empty"><b>大会がまだ登録されていません</b>リーグやカップ戦を追加すると、日程・結果を記録できます<br><button class="btn primary" data-act="newComp">最初の大会を追加</button></div>`}`,
+      : `<div class="card empty"><b>大会がまだ登録されていません</b>リーグやカップ戦を追加すると、日程・結果を記録できます<br><button class="btn primary" data-act="newComp">最初の大会を追加</button> <button class="btn" data-act="leagueImport">${ic('cloud')}リーグから自動作成（API）</button></div>`}`,
   };
 });
 route(/^\/competitions\/([\w]+)$/, id => {
@@ -3731,6 +3731,107 @@ document.addEventListener('change', e => {
   Store.commit('能力値', () => Ovr.set(p, curSeason(), i.dataset.k, i.value.trim()), { render: false });
   const cell = $(`[data-delta="${p.id}"]`); if (cell) cell.innerHTML = Ovr.chip(Ovr.delta(p));
 });
+
+/* ===== create a whole league competition from API-Football in one go ===== */
+// id, name, country, relegated, [zone1 count, label], [zone2 count, label]
+const LEAGUES = [
+  [39, 'Premier League', 'イングランド', 3, [4, 'CL'], [1, 'EL']],
+  [140, 'La Liga', 'スペイン', 3, [4, 'CL'], [2, 'EL']],
+  [135, 'Serie A', 'イタリア', 3, [4, 'CL'], [2, 'EL']],
+  [78, 'Bundesliga', 'ドイツ', 2, [4, 'CL'], [2, 'EL']],
+  [61, 'Ligue 1', 'フランス', 2, [3, 'CL'], [1, 'EL']],
+  [88, 'Eredivisie', 'オランダ', 2, [2, 'CL'], [1, 'EL']],
+  [94, 'Primeira Liga', 'ポルトガル', 2, [2, 'CL'], [1, 'EL']],
+  [40, 'Championship', 'イングランド2部', 3, [2, '自動昇格'], [4, '昇格PO']],
+  [98, 'J1 League', '日本', 3, [3, 'ACL'], [0, '']],
+  [253, 'Major League Soccer', 'アメリカ', 0, [0, ''], [0, '']],
+  [307, 'Saudi Pro League', 'サウジアラビア', 3, [2, 'ACL'], [0, '']],
+  [144, 'Jupiler Pro League', 'ベルギー', 2, [1, 'CL'], [1, 'EL']],
+  [179, 'Premiership', 'スコットランド', 1, [1, 'CL'], [1, 'EL']],
+  [203, 'Süper Lig', 'トルコ', 3, [1, 'CL'], [1, 'EL']],
+];
+const leagueLogo = id => `https://media.api-sports.io/football/leagues/${id}.png`;
+
+const LeagueImport = {
+  open() {
+    const s = curSeason();
+    const m = UI.modal({
+      title: 'リーグから大会を自動作成', cls: 'wide',
+      body: `<div class="notice">リーグを選ぶと、参加チーム（エンブレム・スタジアム付き）・リーグロゴ・節数・CL圏/降格圏を API-Football から取得して大会を作ります。使うAPIは1〜2回だけです。</div>
+        <div class="quick" data-leagues>${LEAGUES.map(([id, name, ja]) => `<a href="javascript:" data-lg="${id}" style="align-items:center;text-align:center"><img src="${leagueLogo(id)}" style="width:44px;height:44px;object-fit:contain;background:#fff;border-radius:10px;padding:4px" loading="lazy"><b>${esc(name)}</b><small>${esc(ja)}</small></a>`).join('')}</div>
+        <div class="row nowrap"><input class="input" placeholder="一覧にないリーグを名前で検索（英語） 例: Serie B, K League" data-lq><button class="btn" data-lsearch>${ic('search')}検索</button></div>
+        <div data-lres></div>`,
+    });
+    m.$('[data-leagues]').onclick = e => { const a = e.target.closest('[data-lg]'); if (a) { const L = LEAGUES.find(x => x[0] === +a.dataset.lg); m.close(); this.confirm({ id: L[0], name: L[1], logo: leagueLogo(L[0]), preset: L }); } };
+    const search = async () => {
+      const q = m.$('[data-lq]').value.trim(); if (q.length < 3) return UI.toast('3文字以上で検索してください');
+      m.$('[data-lres]').innerHTML = '<div class="empty">検索中…</div>';
+      try {
+        const ls = (await AF.searchLeagues(q)).filter(l => l.league.type === 'League').slice(0, 20);
+        m.$('[data-lres]').innerHTML = ls.length ? `<div class="card flush"><div class="list">${ls.map(l => `<div class="li" data-pick='${esc(JSON.stringify({ id: l.league.id, name: l.league.name, logo: l.league.logo }))}'><img class="crest md" src="${esc(l.league.logo)}" style="background:#fff;padding:2px"><div class="grow"><div class="t">${esc(l.league.name)}</div><div class="s">${esc(l.country?.name || '')} ・ ID ${l.league.id}</div></div>${ic('chevR')}</div>`).join('')}</div></div>` : '<div class="empty">見つかりませんでした</div>';
+      } catch (e) { m.$('[data-lres]').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    };
+    m.$('[data-lsearch]').onclick = search; m.$('[data-lq]').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) search(); };
+    m.$('[data-lres]').onclick = e => { const r = e.target.closest('[data-pick]'); if (r) { m.close(); this.confirm(JSON.parse(r.dataset.pick)); } };
+  },
+  /** fetch the league's clubs; free API plans only serve some past seasons, so step back until one answers */
+  async fetchTeams(id) {
+    let year = Math.min(parseInt(curSeason()), new Date().getFullYear()), lastErr;
+    for (let i = 0; i < 4; i++, year--) {
+      try { const r = await AF.get('/teams', { league: id, season: year }); if (r.length) return { year, teams: r }; }
+      catch (e) {
+        lastErr = e;
+        const range = e.message.match(/from (\d{4}) to (\d{4})/);
+        if (range) { year = +range[2] + 1; continue; }
+        if (!/season|plan/i.test(e.message)) throw e;
+      }
+    }
+    throw lastErr || new Error('このリーグのチームを取得できませんでした');
+  },
+  async confirm(lg) {
+    const m = UI.modal({ title: `${lg.name} を取得中…`, cls: 'wide', body: '<div class="empty">API-Footballからチームを取得しています…</div>' });
+    let res;
+    try { res = await this.fetchTeams(lg.id); } catch (e) { m.$('.modal-b').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+    m.close();
+    const c = C(), ownT = teamById(own());
+    const ownApi = res.teams.find(r => (ownT.apiId && String(r.team.id) === String(ownT.apiId)) || normName(r.team.name) === normName(ownT.name));
+    const exists = r => c.teams.find(t => (t.apiId && String(t.apiId) === String(r.team.id)) || normName(t.name) === normName(r.team.name));
+    const P = lg.preset || [lg.id, lg.name, '', 3, [4, 'CL'], [0, '']];
+    const n = res.teams.length + (ownApi ? 0 : 1);
+    UI.form({
+      title: `${lg.name} の大会を作成`, cls: 'wide', saveLabel: '大会を作成',
+      fields: [
+        { type: 'html', html: `<div class="row"><img src="${esc(lg.logo)}" style="width:48px;height:48px;object-fit:contain;background:#fff;border-radius:10px;padding:4px"><div><b style="font-size:16px">${esc(lg.name)}</b><div class="hint">${res.teams.length}チームを取得（API-Football ${res.year}/${String((res.year + 1) % 100).padStart(2, '0')} シーズンのデータ）</div></div></div>${res.year < parseInt(curSeason()) ? '<div class="notice warn">API-Footballの無料プランでは最新シーズンのデータが取れないため、取得できた中で一番新しいシーズンの参加クラブを使っています。昇格・降格したクラブは、作成後に大会の「設定」で入れ替えてください。</div>' : ''}` },
+        { k: 'name', label: '大会名', req: true, cls: 'span2' },
+        { k: 'season', label: 'シーズン', type: 'select', opts: seasonsRange(1990, 2050).reverse() },
+        { k: 'teamIds', label: `参加チーム（${n}）`, type: 'checks', cls: 'full', filter: true, opts: [[own(), `${ownT.name}（自分のクラブ）`, crest(ownT)], ...res.teams.filter(r => r !== ownApi).map(r => [String(r.team.id), r.team.name + (exists(r) ? '（登録済み）' : ''), `<img class="crest" src="${esc(r.team.logo)}">`])] },
+        { k: 'top1', label: `${P[4][1] || '上位'}圏 チーム数`, type: 'number' }, { k: 'top2', label: `${P[5][1] || '上位2'}圏 チーム数`, type: 'number' }, { k: 'bottom', label: '降格 チーム数', type: 'number' },
+        { k: 'fixtures', label: '日程（自チームの試合）も自動生成', type: 'toggle' },
+        { k: 'start', label: '開幕日', type: 'date', show: v => v.fixtures },
+      ],
+      value: { name: lg.name, season: curSeason(), teamIds: [own(), ...res.teams.filter(r => r !== ownApi).map(r => String(r.team.id))], top1: P[4][0] || '', top2: P[5][0] || '', bottom: P[3] || '', fixtures: true, start: `${parseInt(curSeason())}-08-15` },
+      onSave: v => {
+        const nid = uid(); let made = 0;
+        Store.commit(`${v.name} を作成`, c => {
+          if (ownApi) Object.assign(ownT, { apiId: ownT.apiId || ownApi.team.id, logo: ownT.logo || ownApi.team.logo, venue: ownT.venue || venueOf(ownApi) });
+          const ids = v.teamIds.map(x => {
+            if (x === own()) return own();
+            const r = res.teams.find(t => String(t.team.id) === x); let t = exists(r);
+            if (!t) { t = { id: uid(), name: r.team.name, short: r.team.code || '', logo: r.team.logo, apiId: r.team.id, country: r.team.country, venue: venueOf(r), categoryId: '' }; c.teams.push(t); }
+            else Object.assign(t, { logo: t.logo || r.team.logo, apiId: t.apiId || r.team.id, venue: t.venue || venueOf(r) });
+            return t.id;
+          });
+          const k = { id: nid, name: v.name, season: v.season, format: 'league', logo: lg.logo, apiLeague: lg.id, rounds: (ids.length - 1) * 2, teamIds: ids, showTable: true, adjust: {},
+            zones: { top1: v.top1, top1Label: P[4][1] || '上位', top2: v.top2, top2Label: P[5][1] || '', bottom: v.bottom, bottomLabel: '降格' } };
+          c.competitions.push(k);
+          if (v.fixtures && ids.length > 1) { const ms = Comps.makeFixtures(k, { start: v.start, interval: 7, time: '15:00', double: true, ownOnly: true }); c.matches.push(...ms); made = ms.length; }
+        }, { toast: `${v.name} を作成しました${made ? `（${made}試合の日程付き）` : ''}` });
+        go('/competitions/' + nid);
+      },
+    });
+  },
+};
+Actions.leagueImport = () => LeagueImport.open();
 
 /* ===== standalone public-site export ===== */
 // captured before the first render replaces <body> (where the script tags live)
