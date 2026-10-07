@@ -1951,15 +1951,30 @@ function matchTeam(name, ids) {
 const PlayerSearch = {
   data(pl) { return { name: pl.name, sub: [pl.firstname, pl.lastname].filter(Boolean).join(' '), nationality: natJa(pl.nationality), height: num(pl.height) || '', weight: num(pl.weight) || '', birth: pl.birth?.date || '', pos: AF.pos(pl.position), photo: pl.photo || '', apiId: pl.id, ...(pl.number ? { number: pl.number } : {}) }; },
   open(onPick, q0 = '') {
-    const m = UI.modal({ title: 'API-Footballで選手を検索', cls: 'wide', body: `<div class="row nowrap"><input class="input" data-pq placeholder="選手の名字（英語・3文字以上） 例: Mitoma, Saka" value="${esc(q0)}"><button class="btn primary" data-pgo>${ic('search')}検索</button></div><div class="hint">名字で検索するのが確実です（1回の検索でAPI1回）。</div><div data-pres></div>` });
+    const m = UI.modal({ title: 'API-Footballで選手を検索', cls: 'wide', body: `<div class="row nowrap"><input class="input" data-pq placeholder="選手名（英語） 例: Nico Paz, Mitoma, Saka" value="${esc(q0)}"><button class="btn primary" data-pgo>${ic('search')}検索</button></div><div class="hint">名前＋名字で入れると絞り込めます（例: Nico Paz）。よくある名字は最大3ページまで探します（API1〜3回）。</div><div data-pres></div>` });
     let res = [];
     const go = async () => {
-      const q = asciiName(m.$('[data-pq]').value).split(' ').pop();
-      if (!q || q.length < 3) return UI.toast('名字を英語で3文字以上入力してください');
+      const raw = m.$('[data-pq]').value;
+      if (/[\u3040-\u30ff\u4e00-\u9fff]/.test(raw)) return UI.toast('英語（ローマ字）で入力してください（例: Nico Paz）', { err: true });
+      const toks = asciiName(raw).toLowerCase().split(' ').filter(Boolean);
+      const q = (toks.at(-1)?.length >= 3 ? toks.at(-1) : toks.slice().sort((a, b) => b.length - a.length).find(t => t.length >= 3)) || '';
+      if (!q) return UI.toast('名字を英語で3文字以上入力してください');
+      const others = toks.filter(t => t !== q);
+      const hit = r => { const p = r.player, words = [p.name, p.firstname, p.lastname].map(x => asciiName(x).toLowerCase()).join(' ').split(' '); return others.every(t => words.some(w => w.startsWith(t))); };
       m.$('[data-pres]').innerHTML = '<div class="empty">検索中…</div>';
-      try { res = await AF.get('/players/profiles', { search: q }); }
+      try {
+        // the API pages long result lists (common surnames); keep paging until the other name parts match, max 3 calls
+        res = []; let page = 1, total = 1;
+        while (page <= total && page <= 3) {
+          const j = await AF.raw('/players/profiles', `?search=${encodeURIComponent(q)}${page > 1 ? '&page=' + page : ''}`);
+          res.push(...(j.response || [])); total = j.paging?.total || 1; page++;
+          if (!others.length || res.some(hit)) break;
+        }
+        if (others.length) res = [...res.filter(hit), ...res.filter(r => !hit(r))];
+        DB.settings.afUsed = (DB.settings.afUsedDay === today() ? DB.settings.afUsed || 0 : 0) + (page - 1); DB.settings.afUsedDay = today(); Store.save();
+      }
       catch (e) { m.$('[data-pres]').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
-      m.$('[data-pres]').innerHTML = res.length ? `<div class="card flush"><div class="list" style="max-height:55vh;overflow:auto">${res.slice(0, 40).map((r, i) => { const p = r.player; return `<div class="li" data-pi="${i}"><img class="av" src="${esc(p.photo)}" loading="lazy"><div class="grow"><div class="t">${esc(p.name)}</div><div class="s">${esc([p.firstname, p.lastname].filter(Boolean).join(' '))} ・ ${p.age ?? '?'}歳 ・ ${esc(natJa(p.nationality))}</div></div><span class="pos ${AF.pos(p.position)}">${AF.pos(p.position)}</span></div>`; }).join('')}</div></div>` : '<div class="empty">見つかりませんでした。綴りを変えて試してください</div>';
+      m.$('[data-pres]').innerHTML = res.length ? `<div class="card flush"><div class="list" style="max-height:55vh;overflow:auto">${res.slice(0, 80).map((r, i) => { const p = r.player; return `<div class="li" data-pi="${i}"><img class="av" src="${esc(p.photo)}" loading="lazy"><div class="grow"><div class="t">${esc(p.name)}</div><div class="s">${esc([p.firstname, p.lastname].filter(Boolean).join(' '))} ・ ${p.age ?? '?'}歳 ・ ${esc(natJa(p.nationality))}</div></div><span class="pos ${AF.pos(p.position)}">${AF.pos(p.position)}</span></div>`; }).join('')}</div></div>` : '<div class="empty">見つかりませんでした。綴りを変えて試してください</div>';
     };
     m.$('[data-pgo]').onclick = go; m.$('[data-pq]').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) go(); };
     m.$('[data-pres]').onclick = async e => {
