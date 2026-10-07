@@ -1950,41 +1950,76 @@ function matchTeam(name, ids) {
 /* search a real player on API-Football; onPick({ player, team }) where team = their current club */
 const PlayerSearch = {
   data(pl) { return { name: pl.name, sub: [pl.firstname, pl.lastname].filter(Boolean).join(' '), nationality: natJa(pl.nationality), height: num(pl.height) || '', weight: num(pl.weight) || '', birth: pl.birth?.date || '', pos: AF.pos(pl.position), photo: pl.photo || '', apiId: pl.id, ...(pl.number ? { number: pl.number } : {}) }; },
+  row: (p, i, extra = '') => `<div class="li" data-pi="${i}"><img class="av" src="${esc(p.photo || '')}" loading="lazy"><div class="grow"><div class="t">${esc(p.name)}</div><div class="s">${esc([p.firstname, p.lastname].filter(Boolean).join(' ') || extra)}${p.age ? ` ・ ${p.age}歳` : ''}${p.nationality ? ` ・ ${esc(natJa(p.nationality))}` : ''}${p.number ? ` ・ #${p.number}` : ''}</div></div><span class="pos ${AF.pos(p.position)}">${AF.pos(p.position)}</span></div>`,
+  /** onPick({ player, team }); two ways in: by name, or by browsing a club's current squad */
   open(onPick, q0 = '') {
-    const m = UI.modal({ title: 'API-Footballで選手を検索', cls: 'wide', body: `<div class="row nowrap"><input class="input" data-pq placeholder="選手名（英語） 例: Nico Paz, Mitoma, Saka" value="${esc(q0)}"><button class="btn primary" data-pgo>${ic('search')}検索</button></div><div class="hint">名前＋名字で入れると絞り込めます（例: Nico Paz）。よくある名字は最大3ページまで探します（API1〜3回）。</div><div data-pres></div>` });
-    let res = [];
-    const go = async () => {
+    const m = UI.modal({
+      title: 'API-Footballで選手を探す', cls: 'wide',
+      body: `<div class="seg accent" data-mode><button class="on" data-v="name">名前で検索</button><button data-v="club">クラブから選ぶ</button></div>
+        <div data-namebox class="stack" style="gap:8px"><div class="row nowrap"><input class="input" data-pq placeholder="選手名（英語） 例: Nico Paz, Mitoma, Saka" value="${esc(q0)}"><button class="btn primary" data-pgo>${ic('search')}検索</button></div><div class="hint">名前＋名字で入れると絞り込めます。よくある名字は最大3ページまで探します（API1〜3回）。見つからないときは「クラブから選ぶ」が確実です。</div></div>
+        <div data-clubbox class="stack" style="gap:8px" hidden><div class="row nowrap"><input class="input" data-cq placeholder="今の所属クラブ（英語） 例: Como, Real Madrid"><button class="btn primary" data-cgo>${ic('search')}クラブ検索</button></div><div class="row" style="gap:6px" data-myteams></div></div>
+        <div data-pres></div>`,
+    });
+    let list = [], team = null;
+    const out = h => m.$('[data-pres]').innerHTML = h;
+    const showList = (rows, note = '') => { list = rows; out(`${note ? `<div class="hint" style="margin-bottom:6px">${note}</div>` : ''}${rows.length ? `<div class="card flush"><div class="list" style="max-height:52vh;overflow:auto">${rows.slice(0, 120).map((p, i) => this.row(p, i)).join('')}</div></div>` : ''}`); };
+    const used = n => { DB.settings.afUsed = (DB.settings.afUsedDay === today() ? DB.settings.afUsed || 0 : 0) + n; DB.settings.afUsedDay = today(); Store.save(); };
+    /* --- by name --- */
+    const byName = async () => {
       const raw = m.$('[data-pq]').value;
-      if (/[\u3040-\u30ff\u4e00-\u9fff]/.test(raw)) return UI.toast('英語（ローマ字）で入力してください（例: Nico Paz）', { err: true });
+      if (/[぀-ヿ一-鿿]/.test(raw)) return UI.toast('英語（ローマ字）で入力してください（例: Nico Paz）', { err: true });
       const toks = asciiName(raw).toLowerCase().split(' ').filter(Boolean);
       const q = (toks.at(-1)?.length >= 3 ? toks.at(-1) : toks.slice().sort((a, b) => b.length - a.length).find(t => t.length >= 3)) || '';
       if (!q) return UI.toast('名字を英語で3文字以上入力してください');
       const others = toks.filter(t => t !== q);
-      const hit = r => { const p = r.player, words = [p.name, p.firstname, p.lastname].map(x => asciiName(x).toLowerCase()).join(' ').split(' '); return others.every(t => words.some(w => w.startsWith(t))); };
-      m.$('[data-pres]').innerHTML = '<div class="empty">検索中…</div>';
+      const hit = p => { const words = [p.name, p.firstname, p.lastname].map(x => asciiName(x).toLowerCase()).join(' ').split(' '); return others.every(t => words.some(w => w.startsWith(t))); };
+      out('<div class="empty">検索中…</div>'); team = null;
+      let rows = [], page = 1, total = 1;
       try {
-        // the API pages long result lists (common surnames); keep paging until the other name parts match, max 3 calls
-        res = []; let page = 1, total = 1;
         while (page <= total && page <= 3) {
           const j = await AF.raw('/players/profiles', `?search=${encodeURIComponent(q)}${page > 1 ? '&page=' + page : ''}`);
-          res.push(...(j.response || [])); total = j.paging?.total || 1; page++;
-          if (!others.length || res.some(hit)) break;
+          rows.push(...(j.response || []).map(r => r.player)); total = j.paging?.total || 1; page++;
+          if (!others.length || rows.some(hit)) break;
         }
-        if (others.length) res = [...res.filter(hit), ...res.filter(r => !hit(r))];
-        DB.settings.afUsed = (DB.settings.afUsedDay === today() ? DB.settings.afUsed || 0 : 0) + (page - 1); DB.settings.afUsedDay = today(); Store.save();
-      }
-      catch (e) { m.$('[data-pres]').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
-      m.$('[data-pres]').innerHTML = res.length ? `<div class="card flush"><div class="list" style="max-height:55vh;overflow:auto">${res.slice(0, 80).map((r, i) => { const p = r.player; return `<div class="li" data-pi="${i}"><img class="av" src="${esc(p.photo)}" loading="lazy"><div class="grow"><div class="t">${esc(p.name)}</div><div class="s">${esc([p.firstname, p.lastname].filter(Boolean).join(' '))} ・ ${p.age ?? '?'}歳 ・ ${esc(natJa(p.nationality))}</div></div><span class="pos ${AF.pos(p.position)}">${AF.pos(p.position)}</span></div>`; }).join('')}</div></div>` : '<div class="empty">見つかりませんでした。綴りを変えて試してください</div>';
+        used(page - 1);
+      } catch (e) { return out(`<div class="empty">${esc(e.message)}<br><span class="small">「クラブから選ぶ」も試してください</span></div>`); }
+      if (others.length) rows = [...rows.filter(hit), ...rows.filter(p => !hit(p))];
+      const found = !others.length || rows.some(hit);
+      showList(rows, `「${esc(q)}」で ${rows.length} 件（全${total}ページ中${page - 1}ページを確認）${found ? '' : ` ・ <b style="color:var(--warn)">「${esc(others.join(' '))}」に一致する選手は見つかりませんでした。「クラブから選ぶ」で今の所属クラブから探してください</b>`}`);
     };
-    m.$('[data-pgo]').onclick = go; m.$('[data-pq]').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) go(); };
+    /* --- by club --- */
+    const mine = C().teams.filter(t => t.apiId && t.id !== own()).sort((a, b) => a.name.localeCompare(b.name));
+    m.$('[data-myteams]').innerHTML = mine.length ? `<span class="hint">登録済み:</span>${mine.slice(0, 40).map(t => `<button class="btn xs" data-tid="${t.apiId}" data-tname="${esc(t.name)}">${crest(t)} ${esc(t.name)}</button>`).join('')}` : '';
+    const squadOf = async (id, name, logo) => {
+      out(`<div class="empty">${esc(name)} のスカッドを取得中…</div>`); team = { id, name, logo };
+      try { const r = (await AF.squad(id))[0]?.players || []; showList(r, `${esc(name)} の現在のスカッド（${r.length}人）・タップで選択`); }
+      catch (e) { out(`<div class="empty">${esc(e.message)}</div>`); }
+    };
+    const clubSearch = async () => {
+      const q = asciiName(m.$('[data-cq]').value); if (q.length < 3) return UI.toast('クラブ名を英語で3文字以上入力してください');
+      out('<div class="empty">検索中…</div>');
+      try {
+        const ts = (await AF.searchTeams(q)).filter(r => !r.team.national);
+        list = []; out(ts.length ? `<div class="card flush"><div class="list">${ts.slice(0, 20).map(r => `<div class="li" data-club="${r.team.id}" data-cname="${esc(r.team.name)}" data-clogo="${esc(r.team.logo)}"><img class="crest md" src="${esc(r.team.logo)}"><div class="grow"><div class="t">${esc(r.team.name)}</div><div class="s">${esc(r.team.country || '')}</div></div>${ic('chevR')}</div>`).join('')}</div></div>` : '<div class="empty">クラブが見つかりませんでした</div>');
+      } catch (e) { out(`<div class="empty">${esc(e.message)}</div>`); }
+    };
+    /* --- wiring --- */
+    m.$('[data-mode]').onclick = e => { const b = e.target.closest('[data-v]'); if (!b) return; $$('[data-v]', m.$('[data-mode]')).forEach(x => x.classList.toggle('on', x === b)); m.$('[data-namebox]').hidden = b.dataset.v !== 'name'; m.$('[data-clubbox]').hidden = b.dataset.v !== 'club'; out(''); (b.dataset.v === 'name' ? m.$('[data-pq]') : m.$('[data-cq]')).focus(); };
+    m.$('[data-pgo]').onclick = byName; m.$('[data-pq]').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) byName(); };
+    m.$('[data-cgo]').onclick = clubSearch; m.$('[data-cq]').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) clubSearch(); };
+    m.$('[data-myteams]').onclick = e => { const b = e.target.closest('[data-tid]'); if (b) squadOf(b.dataset.tid, b.dataset.tname, ''); };
     m.$('[data-pres]').onclick = async e => {
+      const c = e.target.closest('[data-club]'); if (c) return squadOf(c.dataset.club, c.dataset.cname, c.dataset.clogo);
       const li = e.target.closest('[data-pi]'); if (!li) return;
-      const pl = res[+li.dataset.pi].player; li.style.opacity = .5;
-      let team = null;
-      try { team = (await AF.get('/players/teams', { player: pl.id }))[0]?.team || null; } catch { /* club is optional */ }
+      let pl = list[+li.dataset.pi]; li.style.opacity = .5;
+      if (team) { // squad rows are thin: fetch the full profile (nationality, birth, height…)
+        try { const pr = (await AF.get('/players/profiles', { player: pl.id }))[0]?.player; if (pr) pl = { ...pr, number: pl.number ?? pr.number, photo: pr.photo || pl.photo }; } catch { /* keep squad data */ }
+      } else {
+        try { team = (await AF.get('/players/teams', { player: pl.id }))[0]?.team || null; } catch { /* club is optional */ }
+      }
       m.close(); onPick({ player: pl, team });
     };
-    if (q0) go(); else setTimeout(() => m.$('[data-pq]').focus(), 50);
+    if (q0) byName(); else setTimeout(() => m.$('[data-pq]').focus(), 50);
   },
 };
 
